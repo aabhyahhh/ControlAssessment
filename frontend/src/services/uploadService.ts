@@ -1,5 +1,5 @@
 import { apiFetch } from "./api";
-import type { Control, EvidenceUploadResult, RcmUploadResult, SopUploadResult } from "../types";
+import type { AdequacyUploadResult, Control, EvidenceUploadResult, RcmUploadResult } from "../types";
 
 export function uploadRcm(projectId: string, file: File) {
   const formData = new FormData();
@@ -33,10 +33,33 @@ export function uploadEvidenceFolder(projectId: string, fileList: FileList | Fil
   });
 }
 
-export function uploadSop(projectId: string, file: File) {
+/** One folder, one subfolder per Control ID, SOPs + monthly workpapers
+ *  inside. A file directly under the root is a whole-process SOP. */
+export function uploadAdequacyFolder(projectId: string, fileList: FileList | File[]) {
+  const files = Array.from(fileList);
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+    const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    formData.append("relative_paths", relPath);
+  }
+  return apiFetch<AdequacyUploadResult>(`/projects/${projectId}/upload-adequacy-folder`, {
+    method: "POST",
+    body: formData,
+  });
+}
+
+/** A single SOP or workpaper. Omit controlId for a whole-process SOP. */
+export function uploadAdequacyFile(
+  projectId: string,
+  file: File,
+  opts?: { controlId?: string; docKind?: "sop" | "workpaper" },
+) {
   const formData = new FormData();
   formData.append("file", file);
-  return apiFetch<SopUploadResult>(`/projects/${projectId}/upload-sop`, {
+  if (opts?.controlId) formData.append("control_id", opts.controlId);
+  if (opts?.docKind) formData.append("doc_kind", opts.docKind);
+  return apiFetch<AdequacyUploadResult>(`/projects/${projectId}/upload-adequacy-file`, {
     method: "POST",
     body: formData,
   });

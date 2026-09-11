@@ -1,6 +1,8 @@
 import json
 import math
+import re
 import uuid
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -10,23 +12,69 @@ from app.database import get_conn
 from app.engines.evidence_router import SAMPLE_FILENAME_RE, detect_control_test_mode, is_junk_path
 from app.engines.rcm_normalizer import normalize_rcm_file
 from app.engines.rcm_overlay import load_effective_controls
+from app.engines.risk_scorer import score_controls
 from app.engines.sop_adequacy_engine import parse_sop_steps
 from app.engines.text_extraction import extract_text
 from app.models.schemas import (
+    AdequacyDocSummary,
+    AdequacyUploadResponse,
     ControlResponse,
     EvidenceFolderControlSummary,
     EvidenceUploadResponse,
     RcmUploadResponse,
-    SopUploadResponse,
 )
 from app.security import require_auth
-from app.storage.files import clear_evidence_root, evidence_dir, save_evidence_file, save_rcm_upload, save_sop_upload
+from app.storage.files import (
+    adequacy_dir,
+    clear_adequacy_root,
+    clear_evidence_root,
+    evidence_dir,
+    save_adequacy_file,
+    save_evidence_file,
+    save_rcm_upload,
+)
 
 router = APIRouter(prefix="/api/projects", tags=["upload"])
 
 _MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 _ALLOWED_SUFFIXES = (".xlsx", ".xls", ".csv")
-_ALLOWED_SOP_SUFFIXES = (".docx", ".pdf", ".txt")
+_ALLOWED_ADEQUACY_SUFFIXES = (".docx", ".pdf", ".txt", ".xlsx", ".xlsm")
+
+# Month-of-workpaper inference from a filename. Names workpapers carry in
+# practice: 2026-01, 2026_01, Jan-2026, January 2026, 2026Q1 (-> first month).
+_MONTH_NAMES = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_YM_RE = re.compile(r"(20\d{2})[-_ ]?(0[1-9]|1[0-2])(?!\d)")
+_MY_RE = re.compile(r"(0[1-9]|1[0-2])[-_ ](20\d{2})")
+_NAME_RE = re.compile(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-_ ]?(20\d{2})", re.IGNORECASE)
+_Q_RE = re.compile(r"(20\d{2})[-_ ]?q([1-4])", re.IGNORECASE)
+
+
+def _month_from_filename(name: str) -> date | None:
+    m = _YM_RE.search(name)
+    if m:
+        return date(int(m.group(1)), int(m.group(2)), 1)
+    m = _MY_RE.search(name)
+    if m:
+        return date(int(m.group(2)), int(m.group(1)), 1)
+    m = _NAME_RE.search(name)
+    if m:
+        return date(int(m.group(2)), _MONTH_NAMES[m.group(1).lower()[:3]], 1)
+    m = _Q_RE.search(name)
+    if m:
+        return date(int(m.group(1)), (int(m.group(2)) - 1) * 3 + 1, 1)
+    return None
+
+
+def _classify_adequacy_doc(name: str) -> str:
+    """A file whose name looks like an SOP/policy/procedure is 'sop';
+    everything else filed under a control is a 'workpaper'."""
+    n = name.lower()
+    if any(k in n for k in ("sop", "policy", "procedure", "narrative", "process document", "process_doc")):
+        return "sop"
+    return "workpaper"
 
 
 def _require_project(project_id: str, user_id: str) -> None:
@@ -76,7 +124,7 @@ async def upload_rcm(project_id: str, file: UploadFile, auth: dict = Depends(req
         raise HTTPException(
             status_code=422,
             detail="Could not find a Control ID column, or the file has no data rows. "
-            "Check that the file has a header row with a Control ID / Control Description column.",
+            "The RCM only needs a Control ID column — check the file has a header row with one.",
         )
 
     rcm_upload_id = str(uuid.uuid4())
@@ -134,18 +182,28 @@ async def upload_rcm(project_id: str, file: UploadFile, auth: dict = Depends(req
                     ),
                 )
 
+        conn.commit()
+
+    # Step 1 is just the completeness view — compute it now and mark step 1
+    # done, so the user lands straight on the adequacy upload. Later steps are
+    # reset to pending since a new RCM invalidates them.
+    with get_conn() as conn:
+        controls = load_effective_controls(conn, project_id)
+        step1_payload = score_controls(controls)
+        with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO phase_results (id, project_id, phase, status, result)
-                VALUES (%s, %s, 1, 'pending', %s)
-                ON CONFLICT (project_id, phase) DO UPDATE SET status = 'pending', result = %s, updated_at = NOW()
+                INSERT INTO phase_results (id, project_id, phase, status, result, approved_at)
+                VALUES (%s, %s, 1, 'done', %s, NOW())
+                ON CONFLICT (project_id, phase) DO UPDATE
+                    SET status = 'done', result = EXCLUDED.result, approved_at = NOW(), updated_at = NOW()
                 """,
-                (str(uuid.uuid4()), project_id, json.dumps({}), json.dumps({})),
+                (str(uuid.uuid4()), project_id, json.dumps(step1_payload)),
             )
             cur.execute(
                 "UPDATE projects SET current_phase = 1, "
-                "phase_status = jsonb_set(phase_status, '{1}', '\"pending\"'), updated_at = NOW() "
-                "WHERE id = %s",
+                "phase_status = '{\"1\":\"done\",\"2\":\"pending\",\"3\":\"pending\",\"4\":\"pending\"}'::jsonb, "
+                "updated_at = NOW() WHERE id = %s",
                 (project_id,),
             )
         conn.commit()
@@ -335,23 +393,20 @@ async def upload_evidence_folder(
                         ),
                     )
 
-            # Mark Phase 2 stale, but KEEP the previous result. Wiping it to
-            # '{}' opened a window — from this commit until the re-run wrote
-            # new results — where the row existed but held nothing, and an
-            # export taken in that window silently produced an empty
-            # workbook. Consumers gate on status='done', so stale-but-real
-            # data is strictly better here than no data.
+            # Evidence feeds step 3. Mark it stale but KEEP any previous
+            # result — consumers gate on status='done', so stale-but-real data
+            # beats a row that exists holding nothing.
             cur.execute(
                 """
                 INSERT INTO phase_results (id, project_id, phase, status, result)
-                VALUES (%s, %s, 2, 'pending', '{}'::jsonb)
+                VALUES (%s, %s, 3, 'pending', '{}'::jsonb)
                 ON CONFLICT (project_id, phase) DO UPDATE SET status = 'pending', updated_at = NOW()
                 """,
                 (str(uuid.uuid4()), project_id),
             )
             cur.execute(
-                "UPDATE projects SET phase_status = jsonb_set(phase_status, '{2}', '\"pending\"'), updated_at = NOW() "
-                "WHERE id = %s",
+                "UPDATE projects SET phase_status = jsonb_set(phase_status, '{3}', '\"pending\"'), updated_at = NOW() "
+                "WHERE id = %s AND phase_status->>'3' = 'done'",
                 (project_id,),
             )
         conn.commit()
@@ -373,56 +428,205 @@ def _control_evidence_root(project_id: str, control_id: str) -> Path:
     return evidence_dir(project_id, control_id)
 
 
-@router.post("/{project_id}/upload-sop", response_model=SopUploadResponse)
-async def upload_sop(project_id: str, file: UploadFile, auth: dict = Depends(require_auth)):
-    _require_project(project_id, auth["user_id"])
+def _adequacy_suffix_ok(name: str) -> str:
+    suffix = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if suffix not in _ALLOWED_ADEQUACY_SUFFIXES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type '{suffix}'. Use .docx, .pdf, .txt or .xlsx.",
+        )
+    return suffix
 
-    original_name = file.filename or "sop_upload"
-    suffix = "." + original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
-    if suffix not in _ALLOWED_SOP_SUFFIXES:
-        raise HTTPException(status_code=422, detail=f"Unsupported file type '{suffix}'. Use .docx, .pdf, or .txt.")
+
+def _mark_step2_pending(cur, project_id: str) -> None:
+    cur.execute(
+        """
+        INSERT INTO phase_results (id, project_id, phase, status, result)
+        VALUES (%s, %s, 2, 'pending', '{}'::jsonb)
+        ON CONFLICT (project_id, phase) DO UPDATE SET status = 'pending', updated_at = NOW()
+        """,
+        (str(uuid.uuid4()), project_id),
+    )
+    cur.execute(
+        "UPDATE projects SET phase_status = jsonb_set(phase_status, '{2}', '\"pending\"'), updated_at = NOW() "
+        "WHERE id = %s AND phase_status->>'2' = 'done'",
+        (project_id,),
+    )
+
+
+def _persist_adequacy_doc(
+    cur, project_id: str, control_id: str | None, doc_kind: str,
+    period_month: date | None, dest_path: Path, original_name: str, content_len: int,
+) -> tuple[str, int]:
+    try:
+        extracted_text = extract_text(dest_path)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract text from '{original_name}': {e}")
+    parsed_steps = parse_sop_steps(extracted_text) if doc_kind == "sop" and extracted_text.strip() else []
+    doc_id = str(uuid.uuid4())
+    cur.execute(
+        """
+        INSERT INTO adequacy_documents
+            (id, project_id, control_id, doc_kind, period_month, file_path, original_name,
+             file_type, file_size, extracted_text, parsed_steps)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            doc_id, project_id, control_id, doc_kind, period_month, str(dest_path), original_name,
+            Path(original_name).suffix.lstrip("."), content_len, extracted_text, json.dumps(parsed_steps),
+        ),
+    )
+    return doc_id, len(parsed_steps)
+
+
+@router.post("/{project_id}/upload-adequacy-file", response_model=AdequacyUploadResponse)
+async def upload_adequacy_file(
+    project_id: str,
+    file: UploadFile,
+    control_id: str | None = Form(None),
+    doc_kind: str | None = Form(None),
+    auth: dict = Depends(require_auth),
+):
+    """A single SOP or workpaper. control_id omitted = a whole-process SOP.
+    doc_kind defaults to inference from the filename."""
+    _require_project(project_id, auth["user_id"])
+    original_name = file.filename or "document"
+    _adequacy_suffix_ok(original_name)
 
     content = await file.read()
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File exceeds the 100MB upload limit.")
 
-    dest_path = save_sop_upload(project_id, original_name, content)
+    matched_control_id: str | None = None
+    if control_id:
+        with get_conn() as conn:
+            controls = load_effective_controls(conn, project_id)
+        lookup = {_normalize_path_segment(c["control_id"]).lower(): c["control_id"] for c in controls}
+        matched_control_id = lookup.get(_normalize_path_segment(control_id).lower())
+        if matched_control_id is None:
+            raise HTTPException(status_code=422, detail=f"Control ID '{control_id}' is not in this project.")
 
-    try:
-        extracted_text = extract_text(dest_path)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Could not extract text from SOP file: {e}")
+    kind = (doc_kind or "").strip().lower()
+    if kind not in ("sop", "workpaper"):
+        kind = "sop" if matched_control_id is None else _classify_adequacy_doc(original_name)
+    period_month = _month_from_filename(original_name) if kind == "workpaper" else None
 
-    if not extracted_text.strip():
-        raise HTTPException(status_code=422, detail="No extractable text found in the uploaded SOP file.")
+    dest_path = save_adequacy_file(project_id, matched_control_id, original_name, content)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _, step_count = _persist_adequacy_doc(
+                cur, project_id, matched_control_id, kind, period_month, dest_path, original_name, len(content)
+            )
+            _mark_step2_pending(cur, project_id)
+        conn.commit()
 
-    parsed_steps = parse_sop_steps(extracted_text)
-    sop_upload_id = str(uuid.uuid4())
+    return AdequacyUploadResponse(
+        documents=[AdequacyDocSummary(
+            control_id=matched_control_id, doc_kind=kind, filename=original_name,
+            period_month=period_month.strftime("%Y-%m") if period_month else None,
+            parsed_step_count=step_count,
+        )],
+        total_files_saved=1,
+    )
+
+
+@router.post("/{project_id}/upload-adequacy-folder", response_model=AdequacyUploadResponse)
+async def upload_adequacy_folder(
+    project_id: str,
+    files: list[UploadFile],
+    relative_paths: list[str] = Form(...),
+    auth: dict = Depends(require_auth),
+):
+    """One root folder, one subfolder per Control ID; files inside are that
+    control's SOPs and monthly workpapers. A file directly under the root
+    (not in a control subfolder) is a whole-process SOP."""
+    _require_project(project_id, auth["user_id"])
+    if len(files) != len(relative_paths):
+        raise HTTPException(status_code=422, detail="files and relative_paths must be the same length.")
+
+    with get_conn() as conn:
+        controls = load_effective_controls(conn, project_id)
+    if not controls:
+        raise HTTPException(status_code=400, detail="No RCM loaded for this project. Upload an RCM first.")
+    control_id_lookup = {_normalize_path_segment(c["control_id"]).lower(): c["control_id"] for c in controls}
+
+    parsed_paths: list[list[str]] = []
+    roots_seen: set[str] = set()
+    for rel_path in relative_paths:
+        parts = [p for p in rel_path.replace("\\", "/").split("/") if p]
+        parsed_paths.append(parts)
+        if parts and not is_junk_path(parts):
+            roots_seen.add(parts[0])
+    if len(roots_seen) > 1:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Adequacy upload must be a single root folder; found {len(roots_seen)}: {sorted(roots_seen)}.",
+        )
+
+    summaries: list[AdequacyDocSummary] = []
+    unmatched: set[str] = set()
+    total_saved = 0
 
     with get_conn() as conn:
         with conn.cursor() as cur:
-            # Only one active SOP per project for v1 — replace any prior upload.
-            cur.execute("DELETE FROM sop_uploads WHERE project_id = %s", (project_id,))
-            cur.execute(
-                """
-                INSERT INTO sop_uploads (id, project_id, file_path, original_name, extracted_text, parsed_steps)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (sop_upload_id, project_id, str(dest_path), original_name, extracted_text, json.dumps(parsed_steps)),
-            )
-            cur.execute(
-                """
-                INSERT INTO phase_results (id, project_id, phase, status, result)
-                VALUES (%s, %s, 3, 'pending', '{}'::jsonb)
-                ON CONFLICT (project_id, phase) DO UPDATE SET status = 'pending', result = '{}'::jsonb, updated_at = NOW()
-                """,
-                (str(uuid.uuid4()), project_id),
-            )
-            cur.execute(
-                "UPDATE projects SET phase_status = jsonb_set(phase_status, '{3}', '\"pending\"'), updated_at = NOW() "
-                "WHERE id = %s",
-                (project_id,),
-            )
+            # Replace the whole adequacy set — latest upload wins.
+            cur.execute("DELETE FROM adequacy_documents WHERE project_id = %s", (project_id,))
+            clear_adequacy_root(project_id)
+
+            for upload_file, rel_path, parts in zip(files, relative_paths, parsed_paths):
+                if not parts or is_junk_path(parts):
+                    continue
+                remainder = parts[1:]
+                if not remainder:
+                    continue
+
+                content = await upload_file.read()
+                if len(content) > _MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail=f"File '{rel_path}' exceeds the 100MB upload limit.")
+
+                original_name = remainder[-1]
+                try:
+                    _adequacy_suffix_ok(original_name)
+                except HTTPException:
+                    continue  # skip stray non-document files quietly
+
+                if len(remainder) == 1:
+                    # File directly under the root -> whole-process SOP.
+                    matched_control_id, kind = None, _classify_adequacy_doc(original_name)
+                    if kind != "sop":
+                        kind = "sop"
+                else:
+                    control_segment = remainder[0]
+                    matched_control_id = control_id_lookup.get(_normalize_path_segment(control_segment).lower())
+                    if matched_control_id is None:
+                        unmatched.add(control_segment)
+                        continue
+                    kind = _classify_adequacy_doc(original_name)
+
+                period_month = _month_from_filename(original_name) if kind == "workpaper" else None
+                dest_path = save_adequacy_file(project_id, matched_control_id, original_name, content)
+                _, step_count = _persist_adequacy_doc(
+                    cur, project_id, matched_control_id, kind, period_month, dest_path, original_name, len(content)
+                )
+                total_saved += 1
+                summaries.append(AdequacyDocSummary(
+                    control_id=matched_control_id, doc_kind=kind, filename=original_name,
+                    period_month=period_month.strftime("%Y-%m") if period_month else None,
+                    parsed_step_count=step_count,
+                ))
+
+            if total_saved == 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "No usable SOP or workpaper files were found in the upload"
+                        + (f" (unmatched folder names: {sorted(unmatched)})" if unmatched else "")
+                        + "."
+                    ),
+                )
+            _mark_step2_pending(cur, project_id)
         conn.commit()
 
-    return SopUploadResponse(sop_upload_id=sop_upload_id, filename=original_name, parsed_step_count=len(parsed_steps))
+    return AdequacyUploadResponse(
+        documents=summaries, total_files_saved=total_saved, unmatched_control_ids=sorted(unmatched),
+    )

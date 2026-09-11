@@ -1,7 +1,7 @@
 """
 Per-project progress for long-running phases.
 
-Adequacy assessment, attribute generation and control testing are each a
+The adequacy assessment (step 2) and the gap assessment (step 4) are each a
 single long POST that can run for minutes. Rather than convert them to SSE
 (which would change the contract the agent tools also call), each records
 its progress here and the UI polls one endpoint.
@@ -23,8 +23,7 @@ _state: dict[str, dict[str, dict]] = {}
 # Stage keys. Kept as constants so the route, the engines and the frontend
 # poll agree on spelling.
 ADEQUACY = "adequacy"
-ATTRIBUTES = "attributes"
-TESTING = "testing"
+GAP_ASSESSMENT = "gap_assessment"
 
 
 def set_progress(

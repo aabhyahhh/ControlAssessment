@@ -1,13 +1,14 @@
 """
-Excel exports — the per-control attribute workbook (layout fixed by
-ATTRIBUTE_GENERATION_ENGINE_SPEC.md Section 6) and the multi-sheet final
-report covering all four phases.
+Excel exports for the redesigned flow.
 
-The final report is universe-preserving: every control in the RCM appears
-exactly once on the summary sheet, including controls that were never
-tested. A control missing from an audit deliverable is worse than one
-marked untested, so untested controls carry an explicit reason rather than
-being filtered out.
+  - build_phase_workbook: one workbook per step's result (editable shape).
+  - build_final_report:    the multi-sheet deliverable covering all four steps.
+  - build_rcm_workbook:    the working RCM (normalized + overrides).
+
+The step-4 workbook IS the deliverable — a gap-assessment summary (received vs
+expected, where the gap lies, severity), not a test-of-effectiveness
+workpaper. The reports are universe-preserving: every control in the RCM
+appears exactly once on the summary sheet.
 """
 
 from __future__ import annotations
@@ -52,102 +53,59 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
-def build_attributes_workbook(schemas: list[dict[str, Any]], dest_dir: Path) -> Path:
-    """Layout is fixed by the spec: one sheet named "Attributes", one row per
-    ATTRIBUTE (not per control), exact column order and widths."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Attributes"
+def _join(values: Any) -> str:
+    return ", ".join(str(v) for v in (values or []))
 
-    rows: list[list[Any]] = []
-    for schema in sorted(schemas, key=lambda s: s["control_id"]):
-        for i, attr in enumerate(schema.get("attributes") or [], start=1):
-            rows.append([schema["control_id"], i, attr.get("name", ""), attr.get("description", "")])
 
-    _write_sheet(
-        ws,
-        ["Control ID", "Attribute #", "Attribute Name", "Attribute Description"],
-        [16, 12, 35, 60],
-        rows,
-    )
+def _pct(value: Any) -> str:
+    return "" if value is None else f"{round(value * 100)}%"
 
-    control_ids = sorted(s["control_id"] for s in schemas)
-    if len(control_ids) <= 5:
-        id_part = "_".join(control_ids) or "no_controls"
-    else:
-        id_part = "_".join(control_ids[:3]) + f"_and_{len(control_ids) - 3}_more"
-    safe_id_part = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_part)[:80]
 
-    dest = dest_dir / f"Editable_Attributes_{safe_id_part}_{_timestamp()}.xlsx"
-    wb.save(dest)
-    return dest
+# ═══════════════════════════════════════════════════════════════════════════
+#  Per-step workbook
+# ═══════════════════════════════════════════════════════════════════════════
 
 
 def build_phase_workbook(phase: int, controls: list[dict[str, Any]], result: dict[str, Any], dest_dir: Path) -> Path:
-    """One workbook per phase, in the same shape the user can edit and
-    re-upload as an override. Column A is always Control ID so the
-    round-trip has a stable key."""
     wb = Workbook()
     ws = wb.active
 
     if phase == 1:
-        ws.title = "Phase 1 - Risk"
-        risk_by_control = {c["control_id"]: (c.get("risk_level") or "") for c in controls}
-        missing = {m["control_id"]: ", ".join(m["missing_fields"]) for m in (result.get("missing_attributes") or [])}
+        ws.title = "Step 1 - RCM Intake"
         rows = [
             [
-                r["control_id"], r["rank"], r["risk_rating"],
-                f"{round(r['completeness_pct'] * 100)}%",
-                missing.get(r["control_id"], ""), r["description"],
+                c["control_id"],
+                f"{round(c.get('completeness_pct', 0) * 100)}%",
+                _join(c.get("missing_fields")),
+                c.get("control_description", ""),
             ]
-            for r in (result.get("priority_queue") or [])
-        ] or [[c["control_id"], "", risk_by_control.get(c["control_id"], ""), "", "", c.get("control_description") or ""] for c in controls]
-        _write_sheet(
-            ws,
-            ["Control ID", "Rank", "Risk Level", "Completeness", "Missing Fields", "Control Description"],
-            [16, 8, 14, 14, 30, 60],
-            rows,
-        )
+            for c in (result.get("controls") or [])
+        ] or [[c["control_id"], "", "", c.get("control_description") or ""] for c in controls]
+        _write_sheet(ws, ["Control ID", "Completeness", "Blank Fields", "Control Description"], [16, 14, 34, 60], rows)
+
     elif phase == 2:
-        ws.title = "Phase 2 - Evidence"
-        required = result.get("required_documents") or {}
-        missing_docs = {m["control_id"]: ", ".join(m["missing"]) for m in (result.get("missing_documents") or [])}
-        gaps = {g["control_id"]: g for g in (result.get("escalated_gaps") or [])}
+        ws.title = "Step 2 - Adequacy"
+        recon = {r["control_id"]: r for r in (result.get("reconciliation") or [])}
+        align = {a["control_id"]: a for a in (result.get("control_alignment") or [])}
+        wp = {w["control_id"]: w for w in (result.get("workpaper_coverage") or [])}
         _write_sheet(
             ws,
-            ["Control ID", "Evidence Score", "Band", "Severity", "Expected Documents", "Missing Documents"],
-            [16, 14, 12, 20, 55, 55],
-            [
-                [
-                    e["control_id"], e["score"], e["band"],
-                    (gaps.get(e["control_id"]) or {}).get("severity", ""),
-                    ", ".join(required.get(e["control_id"], [])),
-                    missing_docs.get(e["control_id"], ""),
-                ]
-                for e in (result.get("evidence_scores") or [])
-            ],
-        )
-    elif phase == 3:
-        ws.title = "Phase 3 - Adequacy"
-        alignment = {a["control_id"]: a for a in (result.get("control_alignment") or [])}
-        timeline = {t["control_id"]: t for t in (result.get("timeline_sufficiency") or [])}
-        _write_sheet(
-            ws,
-            ["Control ID", "SOP Alignment", "Mismatches", "Design Verdict", "Weak Dimensions",
-             "Timeline Status", "Timeline Flags", "Evidence Date Range"],
-            [16, 16, 50, 20, 28, 16, 26, 26],
+            ["Control ID", "Described in Docs", "Reconciliation", "SOP Alignment", "Mismatches",
+             "Design Verdict", "Weak Dimensions", "Workpaper Months Missing"],
+            [16, 16, 14, 16, 48, 18, 26, 30],
             [
                 [
                     d["control_id"],
-                    (alignment.get(d["control_id"]) or {}).get("alignment", ""),
+                    "yes" if (recon.get(d["control_id"]) or {}).get("described_in_docs") else "no",
+                    _pct((recon.get(d['control_id']) or {}).get('reconciliation_pct')),
+                    (align.get(d["control_id"]) or {}).get("alignment", ""),
                     "; ".join(
                         f"{m['field']}: RCM='{m['rcm_value']}' vs SOP='{m['sop_value']}'"
-                        for m in (alignment.get(d["control_id"]) or {}).get("mismatches", [])
+                        for m in (align.get(d["control_id"]) or {}).get("mismatches", [])
                     ),
-                    d.get("verdict", ""), ", ".join(d.get("weak_dimensions") or []),
-                    (timeline.get(d["control_id"]) or {}).get("status", ""),
-                    ", ".join((timeline.get(d["control_id"]) or {}).get("flags") or []),
-                    _date_range(timeline.get(d["control_id"])),
+                    d.get("verdict", ""),
+                    _join(d.get("weak_dimensions")),
+                    _join((wp.get(d["control_id"]) or {}).get("months_missing")),
                 ]
                 for d in (result.get("deficiencies") or [])
             ],
@@ -159,48 +117,65 @@ def build_phase_workbook(phase: int, controls: list[dict[str, Any]], result: dic
                 [14, 90, 14],
                 [[g["sop_step_id"], g["description"], g["coverage"]] for g in result["coverage_gaps"]],
             )
-    else:
-        ws.title = "Phase 4 - Summary"
+
+    elif phase == 3:
+        ws.title = "Step 3 - Evidence"
         _write_sheet(
             ws,
-            ["Control ID", "Frequency", "Samples", "Fails", "Deviation Rate", "Verdict", "Deficiency"],
-            [16, 16, 12, 10, 16, 26, 24],
+            ["Control ID", "Score", "Severity", "Expected Documents", "Received (uploaded)",
+             "Declared not Uploaded", "Missing", "Extra Declared"],
+            [16, 8, 12, 48, 40, 34, 34, 30],
             [
-                [s["control_id"], s["frequency"], s["sample_size"], s["fails"],
-                 f"{round(s['deviation_rate'] * 100)}%", s["verdict"], s.get("deficiency_type") or ""]
-                for s in (result.get("sampling_results") or [])
+                [
+                    r["control_id"], r.get("score", 0), r.get("severity") or "",
+                    _join(r.get("required")), _join(r.get("matched")),
+                    _join(r.get("declared_not_uploaded")), _join(r.get("missing")),
+                    _join(r.get("extra_declared")),
+                ]
+                for r in (result.get("per_control") or [])
             ],
         )
-        sample_rows = []
-        for r in (result.get("control_results") or []):
-            for s in r.get("sample_results") or []:
-                sample_rows.append([
-                    r["control_id"], s["sample_id"], s["result"],
-                    "; ".join(f"{k}={v}" for k, v in (s.get("attribute_results") or {}).items()),
-                    s.get("remarks", ""),
-                ])
-        _write_sheet(
-            wb.create_sheet("Samples"),
-            ["Control ID", "Sample", "Result", "Attribute Results", "Remarks"],
-            [16, 16, 12, 40, 70],
-            sample_rows,
-        )
-        if result.get("format_issues"):
-            _write_sheet(
-                wb.create_sheet("Untestable"),
-                ["Control ID", "Detected Mode", "Reason"],
-                [16, 18, 80],
-                [[f["control_id"], f["detected_mode"], f["message"]] for f in result["format_issues"]],
-            )
 
-    dest = dest_dir / f"Phase{phase}_{ws.title.replace(' ', '_').replace('-', '')}_{_timestamp()}.xlsx"
+    else:
+        ws.title = "Step 4 - Gap Assessment"
+        _write_sheet(
+            ws,
+            ["Control ID", "Severity", "Expected", "Received", "Missing Documents", "RCM Field Gaps",
+             "SOP Alignment", "Reconciliation", "Design Verdict", "Workpaper Months Missing", "Summary"],
+            [16, 12, 34, 34, 40, 30, 16, 14, 18, 30, 70],
+            [
+                [
+                    r["control_id"], (r.get("severity") or "none").upper(),
+                    _join(r.get("expected_documents")), _join(r.get("received_documents")),
+                    _join(r.get("missing_documents")), _join(r.get("rcm_field_gaps")),
+                    r.get("sop_alignment") or "",
+                    _pct(r.get('reconciliation_pct')),
+                    r.get("design_verdict") or "", _join(r.get("workpaper_months_missing")),
+                    r.get("summary", ""),
+                ]
+                for r in (result.get("rows") or [])
+            ],
+        )
+        rollup = (result.get("stats") or {}).get("severity_rollup") or {}
+        _write_sheet(
+            wb.create_sheet("Severity Rollup"),
+            ["Severity", "Control Count"],
+            [16, 16],
+            [[k.upper(), v] for k, v in rollup.items()],
+        )
+
+    name = {1: "RCM_Intake", 2: "Adequacy", 3: "Evidence", 4: "Gap_Assessment"}[phase]
+    dest = dest_dir / f"Step{phase}_{name}_{_timestamp()}.xlsx"
     wb.save(dest)
     return dest
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Working RCM
+# ═══════════════════════════════════════════════════════════════════════════
+
+
 def build_rcm_workbook(controls: list[dict[str, Any]], dest_dir: Path) -> Path:
-    """The working RCM as it stands after normalization and any overrides —
-    editable and re-uploadable to correct field values."""
     wb = Workbook()
     ws = wb.active
     ws.title = "RCM"
@@ -222,14 +197,17 @@ def build_rcm_workbook(controls: list[dict[str, Any]], dest_dir: Path) -> Path:
     return dest
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Final multi-step report
+# ═══════════════════════════════════════════════════════════════════════════
+
+
 def build_final_report(
     project: dict[str, Any],
     controls: list[dict[str, Any]],
     phase_results: dict[int, dict[str, Any]],
-    attribute_schemas: list[dict[str, Any]],
     dest_dir: Path,
 ) -> Path:
-    """Multi-sheet workbook: control universe summary + one sheet per phase."""
     wb = Workbook()
 
     p1 = phase_results.get(1) or {}
@@ -237,184 +215,129 @@ def build_final_report(
     p3 = phase_results.get(3) or {}
     p4 = phase_results.get(4) or {}
 
-    # ── Sheet 1: control universe (every control exactly once) ────────
-    risk_by_control = {c["control_id"]: (c.get("risk_level") or "") for c in controls}
-    evidence_score = {e["control_id"]: e["score"] for e in (p2.get("evidence_scores") or [])}
-    adequacy = {d["control_id"]: d for d in (p3.get("deficiencies") or [])}
-    timeline = {t["control_id"]: t for t in (p3.get("timeline_sufficiency") or [])}
-    testing = {r["control_id"]: r for r in (p4.get("control_results") or [])}
-    format_issue = {f["control_id"]: f for f in (p4.get("format_issues") or [])}
+    completeness = {c["control_id"]: c for c in (p1.get("controls") or [])}
+    recon = {r["control_id"]: r for r in (p2.get("reconciliation") or [])}
+    align = {a["control_id"]: a for a in (p2.get("control_alignment") or [])}
+    deficiency = {d["control_id"]: d for d in (p2.get("deficiencies") or [])}
+    workpaper = {w["control_id"]: w for w in (p2.get("workpaper_coverage") or [])}
+    evidence = {r["control_id"]: r for r in (p3.get("per_control") or [])}
+    gap = {r["control_id"]: r for r in (p4.get("rows") or [])}
 
+    # ── Sheet 1: control universe ────────────────────────────────────
     universe_rows = []
     for c in sorted(controls, key=lambda x: x["control_id"]):
         cid = c["control_id"]
-        test = testing.get(cid)
-        if test:
-            verdict = test["effectiveness_status"]
-            detail = f"{test['failed_samples']}/{test['total_samples']} sample(s) failed"
-        elif cid in format_issue:
-            verdict = "Not tested"
-            detail = format_issue[cid]["message"]
-        else:
-            verdict = "Not tested"
-            detail = "No testing result recorded for this control."
-
+        g = gap.get(cid, {})
+        ev = evidence.get(cid, {})
         universe_rows.append([
             cid,
             c.get("control_description") or "",
-            c.get("process") or "",
-            risk_by_control.get(cid, ""),
-            c.get("control_frequency") or "",
-            c.get("control_owner") or "",
-            evidence_score.get(cid, ""),
-            (adequacy.get(cid) or {}).get("verdict", ""),
-            (timeline.get(cid) or {}).get("status", ""),
-            verdict,
-            (test or {}).get("deficiency_type") or "",
-            detail,
+            f"{round(completeness.get(cid, {}).get('completeness_pct', 0) * 100)}%",
+            "yes" if (recon.get(cid) or {}).get("described_in_docs") else "no",
+            (align.get(cid) or {}).get("alignment", ""),
+            (deficiency.get(cid) or {}).get("verdict", ""),
+            f"{ev.get('score', 0)}%",
+            _join((workpaper.get(cid) or {}).get("months_missing")),
+            (g.get("severity") or "none").upper(),
+            g.get("summary", ""),
         ])
 
     ws = wb.active
     ws.title = "Control Universe"
     _write_sheet(
         ws,
-        ["Control ID", "Control Description", "Process", "Risk Level", "Frequency", "Owner",
-         "Evidence Score", "Design Adequacy", "Timeline", "Effectiveness", "Deficiency", "Detail"],
-        [16, 50, 18, 12, 14, 18, 14, 18, 14, 22, 22, 48],
+        ["Control ID", "Control Description", "RCM Completeness", "Described in Docs", "SOP Alignment",
+         "Design Verdict", "Evidence Score", "Workpaper Months Missing", "Gap Severity", "Summary"],
+        [16, 46, 16, 16, 16, 18, 14, 28, 14, 64],
         universe_rows,
     )
 
-    # ── Sheet 2: Phase 1 risk prioritization ──────────────────────────
+    # ── Sheet 2: Step 1 ─────────────────────────────────────────────
     _write_sheet(
-        wb.create_sheet("Phase 1 - Risk"),
-        ["Rank", "Control ID", "Risk Rating", "Completeness", "Description"],
-        [8, 16, 14, 14, 60],
+        wb.create_sheet("Step 1 - RCM Intake"),
+        ["Control ID", "Completeness", "Blank Fields", "Control Description"],
+        [16, 14, 34, 60],
         [
-            [r["rank"], r["control_id"], r["risk_rating"], f"{round(r['completeness_pct'] * 100)}%", r["description"]]
-            for r in (p1.get("priority_queue") or [])
+            [c["control_id"], f"{round(c.get('completeness_pct', 0) * 100)}%", _join(c.get("missing_fields")),
+             c.get("control_description", "")]
+            for c in (p1.get("controls") or [])
         ],
     )
 
-    # ── Sheet 3: Phase 2 evidence gaps ────────────────────────────────
-    missing_by_control = {m["control_id"]: ", ".join(m["missing"]) for m in (p2.get("missing_documents") or [])}
-    gap_by_control = {g["control_id"]: g for g in (p2.get("escalated_gaps") or [])}
+    # ── Sheet 3: Step 2 ─────────────────────────────────────────────
     _write_sheet(
-        wb.create_sheet("Phase 2 - Evidence"),
-        ["Control ID", "Evidence Score", "Band", "Escalated Severity", "Missing Documents"],
-        [16, 14, 12, 20, 70],
-        [
-            [
-                e["control_id"], e["score"], e["band"],
-                (gap_by_control.get(e["control_id"]) or {}).get("severity", ""),
-                missing_by_control.get(e["control_id"], ""),
-            ]
-            for e in (p2.get("evidence_scores") or [])
-        ],
-    )
-
-    # ── Sheet 4: Phase 3 adequacy + timeline ──────────────────────────
-    alignment = {a["control_id"]: a for a in (p3.get("control_alignment") or [])}
-    _write_sheet(
-        wb.create_sheet("Phase 3 - Adequacy"),
-        ["Control ID", "SOP Alignment", "Mismatches", "Design Verdict", "Weak Dimensions",
-         "Timeline Status", "Timeline Flags", "Evidence Date Range"],
-        [16, 16, 50, 20, 28, 16, 26, 26],
+        wb.create_sheet("Step 2 - Adequacy"),
+        ["Control ID", "Described in Docs", "Reconciliation", "SOP Alignment", "Mismatches",
+         "Design Verdict", "Weak Dimensions", "Workpaper Months Missing"],
+        [16, 16, 14, 16, 48, 18, 26, 30],
         [
             [
                 d["control_id"],
-                (alignment.get(d["control_id"]) or {}).get("alignment", ""),
+                "yes" if (recon.get(d["control_id"]) or {}).get("described_in_docs") else "no",
+                _pct((recon.get(d['control_id']) or {}).get('reconciliation_pct')),
+                (align.get(d["control_id"]) or {}).get("alignment", ""),
                 "; ".join(
                     f"{m['field']}: RCM='{m['rcm_value']}' vs SOP='{m['sop_value']}'"
-                    for m in (alignment.get(d["control_id"]) or {}).get("mismatches", [])
+                    for m in (align.get(d["control_id"]) or {}).get("mismatches", [])
                 ),
-                d.get("verdict", ""),
-                ", ".join(d.get("weak_dimensions") or []),
-                (timeline.get(d["control_id"]) or {}).get("status", ""),
-                ", ".join((timeline.get(d["control_id"]) or {}).get("flags") or []),
-                _date_range(timeline.get(d["control_id"])),
+                d.get("verdict", ""), _join(d.get("weak_dimensions")),
+                _join((workpaper.get(d["control_id"]) or {}).get("months_missing")),
             ]
-            for d in (p3.get("deficiencies") or [])
+            for d in (p2.get("deficiencies") or [])
         ],
     )
-
-    if p3.get("coverage_gaps"):
+    if p2.get("coverage_gaps"):
         _write_sheet(
-            wb.create_sheet("Phase 3 - SOP Gaps"),
+            wb.create_sheet("Step 2 - SOP Gaps"),
             ["SOP Step", "Description", "Coverage"],
             [14, 90, 14],
-            [[g["sop_step_id"], g["description"], g["coverage"]] for g in p3["coverage_gaps"]],
+            [[g["sop_step_id"], g["description"], g["coverage"]] for g in p2["coverage_gaps"]],
         )
 
-    # ── Sheet 5: Phase 4 testing, one row per SAMPLE ──────────────────
-    sample_rows = []
-    for r in (p4.get("control_results") or []):
-        for s in r.get("sample_results") or []:
-            sample_rows.append([
-                r["control_id"], s["sample_id"], s["result"],
-                "; ".join(f"{k}={v}" for k, v in (s.get("attribute_results") or {}).items()),
-                s.get("remarks", ""),
-            ])
+    # ── Sheet 4: Step 3 ─────────────────────────────────────────────
     _write_sheet(
-        wb.create_sheet("Phase 4 - Samples"),
-        ["Control ID", "Sample", "Result", "Attribute Results", "Remarks"],
-        [16, 16, 12, 40, 70],
-        sample_rows,
-    )
-
-    _write_sheet(
-        wb.create_sheet("Phase 4 - Summary"),
-        ["Control ID", "Frequency", "Samples", "Fails", "Deviation Rate", "Verdict", "Deficiency"],
-        [16, 16, 12, 10, 16, 26, 24],
+        wb.create_sheet("Step 3 - Evidence"),
+        ["Control ID", "Score", "Severity", "Expected Documents", "Received", "Declared not Uploaded", "Missing"],
+        [16, 8, 12, 48, 40, 34, 34],
         [
-            [s["control_id"], s["frequency"], s["sample_size"], s["fails"],
-             f"{round(s['deviation_rate'] * 100)}%", s["verdict"], s.get("deficiency_type") or ""]
-            for s in (p4.get("sampling_results") or [])
+            [
+                r["control_id"], r.get("score", 0), r.get("severity") or "",
+                _join(r.get("required")), _join(r.get("matched")),
+                _join(r.get("declared_not_uploaded")), _join(r.get("missing")),
+            ]
+            for r in (p3.get("per_control") or [])
         ],
     )
 
-    # ── Remediation plan ──────────────────────────────────────────────
-    # One row per failed sample in priority order — the action list a
-    # remediation owner works from, so it belongs in the filed workpaper
-    # rather than only on screen.
-    remediation = p4.get("remediation_priorities") or []
-    if remediation:
-        _write_sheet(
-            wb.create_sheet("Remediation Plan"),
-            ["Rank", "Priority", "Control ID", "Sample", "Risk Level", "SOP Alignment",
-             "Testing Verdict", "Failed Attributes", "Why This Ranking", "Remarks"],
-            [8, 10, 16, 14, 13, 16, 26, 20, 52, 52],
+    # ── Sheet 5: Step 4 gap assessment ─────────────────────────────
+    _write_sheet(
+        wb.create_sheet("Step 4 - Gap Assessment"),
+        ["Control ID", "Severity", "Expected", "Received", "Missing Documents", "RCM Field Gaps",
+         "SOP Alignment", "Reconciliation", "Design Verdict", "Workpaper Months Missing", "Summary"],
+        [16, 12, 34, 34, 40, 30, 16, 14, 18, 30, 70],
+        [
             [
-                [
-                    r.get("rank", ""), r.get("priority", ""), r.get("control_id", ""),
-                    r.get("sample_id", ""), r.get("risk_level", ""),
-                    (r.get("sop_alignment") or ("covered" if r.get("in_sop") else "not in SOP")),
-                    r.get("verdict", ""), ", ".join(r.get("failed_attributes") or []),
-                    r.get("why", ""), r.get("remarks", ""),
-                ]
-                for r in remediation
-            ],
+                r["control_id"], (r.get("severity") or "none").upper(),
+                _join(r.get("expected_documents")), _join(r.get("received_documents")),
+                _join(r.get("missing_documents")), _join(r.get("rcm_field_gaps")),
+                r.get("sop_alignment") or "",
+                _pct(r.get('reconciliation_pct')),
+                r.get("design_verdict") or "", _join(r.get("workpaper_months_missing")),
+                r.get("summary", ""),
+            ]
+            for r in (p4.get("rows") or [])
+        ],
+    )
+    rollup = (p4.get("stats") or {}).get("severity_rollup") or {}
+    if rollup:
+        _write_sheet(
+            wb.create_sheet("Step 4 - Severity Rollup"),
+            ["Severity", "Control Count"],
+            [16, 16],
+            [[k.upper(), v] for k, v in rollup.items()],
         )
 
-    # ── Sheet 6: approved attributes ──────────────────────────────────
-    attr_rows = []
-    for schema in sorted(attribute_schemas, key=lambda s: s["control_id"]):
-        for i, attr in enumerate(schema.get("attributes") or [], start=1):
-            attr_rows.append([schema["control_id"], i, attr.get("name", ""), attr.get("description", "")])
-    _write_sheet(
-        wb.create_sheet("Attributes"),
-        ["Control ID", "Attribute #", "Attribute Name", "Attribute Description"],
-        [16, 12, 35, 60],
-        attr_rows,
-    )
-
     safe_name = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in (project.get("name") or "project"))[:60]
-    dest = dest_dir / f"Final_Report_{safe_name}_{_timestamp()}.xlsx"
+    dest = dest_dir / f"Gap_Assessment_Report_{safe_name}_{_timestamp()}.xlsx"
     wb.save(dest)
     return dest
-
-
-def _date_range(timeline_row: dict[str, Any] | None) -> str:
-    if not timeline_row:
-        return ""
-    earliest, latest = timeline_row.get("earliest_evidence_date"), timeline_row.get("latest_evidence_date")
-    return f"{earliest} to {latest}" if earliest and latest else "No dated evidence"

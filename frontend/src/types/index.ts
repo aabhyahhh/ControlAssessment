@@ -47,62 +47,41 @@ export interface RcmUploadResult {
   header_row_index: number;
 }
 
-export interface RiskInference {
-  value: string;
-  source: string;
-  confidence: string;
-  reasoning: string;
-  probability?: string;
-  impact?: string;
-  score?: number;
-}
-
-export interface RiskBand {
-  threshold: number;
-  label: string;
-}
-
-export interface RiskWeighting {
-  score_map: Record<string, number>;
-  bands: RiskBand[];
-  is_default?: boolean;
-}
-
-export interface HeatmapCell {
-  likelihood: string;
-  impact: string;
-  count: number;
-  control_ids: string[];
-}
-
-export interface PriorityQueueRow {
+export interface ControlCompletenessRow {
   control_id: string;
-  risk_rating: string;
+  control_description: string;
   completeness_pct: number;
-  description: string;
-  rank: number;
+  missing_fields: string[];
+}
+
+export interface RcmFieldCompleteness {
+  field: string;
+  populated: number;
+  blank: number;
+  blank_control_ids: string[];
+}
+
+export interface RcmCompletenessAnalytics {
+  fields: RcmFieldCompleteness[];
+  total_controls: number;
+  controls_with_blanks: number;
+  fields_requiring_reconciliation: string[];
+}
+
+export interface Phase1Analytics {
+  control_population: { total: number };
+  rcm_completeness: RcmCompletenessAnalytics;
 }
 
 export interface Phase1Result {
   stats?: {
     controls_in_racm: number;
     racm_completeness_pct: number;
-    high_risk_count: number;
-    exposure_metric: { themes: Record<string, number>; top_theme: string; top_theme_count: number };
   };
   completeness_pct?: number;
   missing_attributes?: { control_id: string; missing_fields: string[] }[];
-  heatmap?: { axes: { likelihood: string[]; impact: string[] }; cells: HeatmapCell[] };
-  priority_queue?: PriorityQueueRow[];
-  pending_risk_inferences?: Record<string, RiskInference>;
-  controls_pending_inference?: number;
-  applied_risk_inferences?: Record<string, RiskInference>;
-  awaiting_weighting?: boolean;
-  controls_missing_risk_level?: string[];
-  default_weighting?: RiskWeighting;
-  default_matrix?: Record<string, string>;
-  weighting_used?: RiskWeighting;
-  risk_matrix?: Record<string, string>;
+  controls?: ControlCompletenessRow[];
+  analytics?: Phase1Analytics;
 }
 
 export interface PhaseResult<T = Record<string, unknown>> {
@@ -140,38 +119,30 @@ export interface EvidenceUploadResult {
   unmatched_control_ids: string[];
 }
 
-export interface EvidenceScoreRow {
+export type Severity = "critical" | "high" | "medium" | "low";
+
+// ── Step 2: Adequacy (SOPs + monthly workpapers) ──────────────────────────
+
+export interface ReconcileFieldStatus {
+  rcm_value: string;
+  doc_value: string;
+  status: "supported" | "contradicted" | "absent" | "undetermined";
+}
+
+export interface ReconciliationRow {
   control_id: string;
-  score: number;
-  band: "good" | "fair" | "poor";
+  /** null when it could not be assessed (no LLM / no control-specific text). */
+  reconciliation_pct: number | null;
+  described_in_docs: boolean;
+  fields: Record<string, ReconcileFieldStatus>;
 }
 
-export interface EscalatedGap {
+export interface WorkpaperCoverageRow {
   control_id: string;
-  risk_rating: string;
-  severity: string;
-  explanation: string;
-}
-
-export interface Phase2Result {
-  stats?: {
-    avg_evidence_score: number;
-    controls_without_evidence: number;
-    evidence_gaps_count: number;
-    test_ready_controls: number;
-  };
-  required_documents?: Record<string, string[]>;
-  evidence_scores?: EvidenceScoreRow[];
-  document_completeness_donut?: { matched: number; missing: number };
-  missing_documents?: { control_id: string; missing: string[] }[];
-  escalated_gaps?: EscalatedGap[];
-  format_flags?: { control_id: string; detected_mode: string }[];
-}
-
-export interface SopUploadResult {
-  sop_upload_id: string;
-  filename: string;
-  parsed_step_count: number;
+  months_expected: string[];
+  months_present: string[];
+  months_missing: string[];
+  coverage_pct: number;
 }
 
 export interface FieldMismatch {
@@ -182,7 +153,7 @@ export interface FieldMismatch {
 
 export interface ControlAlignmentRow {
   control_id: string;
-  alignment: "aligned" | "partial" | "misaligned";
+  alignment: "aligned" | "partial" | "misaligned" | "not_assessed";
   mismatches: FieldMismatch[];
 }
 
@@ -192,25 +163,217 @@ export interface CoverageGap {
   coverage: "none";
 }
 
+export type DimensionState = "supported" | "contradicted" | "undocumented" | "not_assessed";
+
 export interface DeficiencyRow {
   control_id: string;
-  verdict: "Adequate" | "Partially adequate" | "Inadequate";
-  score: number;
+  verdict: "Adequate" | "Partially adequate" | "Inadequate" | "Not assessed";
   weak_dimensions: string[];
-  /** Per-dimension 0-100 scores from the adequacy engine. Optional because
-   *  results stored before this field existed will not carry it. */
-  dimension_scores?: Record<string, number>;
+  dimension_states?: Record<string, DimensionState>;
 }
 
-export interface TimelineSufficiencyRow {
+export interface AdequacyDocSummary {
+  control_id: string | null;
+  doc_kind: "sop" | "workpaper";
+  filename: string;
+  period_month: string | null;
+  parsed_step_count: number;
+}
+
+export interface AdequacyUploadResult {
+  documents: AdequacyDocSummary[];
+  total_files_saved: number;
+  unmatched_control_ids: string[];
+}
+
+export interface ReconciliationSummaryAnalytics {
+  cell_counts: { supported: number; contradicted: number; undocumented: number; undetermined: number };
+  pct_supported: number | null;
+  pct_contradicted: number | null;
+  pct_undocumented: number | null;
+  pct_undetermined: number | null;
+  most_contradicted_fields: { field: string; control_count: number }[];
+  controls_by_exception_count: { control_id: string; contradicted: number; undetermined: number }[];
+}
+
+export interface WorkpaperCoverageAnalytics {
+  controls_complete: number;
+  controls_with_missing: number;
+  total_missing_control_months: number;
+  overall_coverage_pct: number | null;
+  months_most_missing: { month: string; missing_control_count: number }[];
+}
+
+export interface DesignProfileDimension {
+  dimension: string;
+  supported: number;
+  contradicted: number;
+  undocumented: number;
+  not_assessed: number;
+}
+
+export interface DesignProfileAnalytics {
+  dimensions: DesignProfileDimension[];
+  total_controls: number;
+  /** False only when every control is "not_assessed" (no LLM available). */
+  assessed: boolean;
+}
+
+export interface Phase2Analytics {
+  adequacy_summary: {
+    adequate: number;
+    partially_adequate: number;
+    inadequate: number;
+    not_in_docs: number;
+    total: number;
+  };
+  reconciliation_summary: ReconciliationSummaryAnalytics;
+  workpaper_coverage: WorkpaperCoverageAnalytics;
+  design_profile: DesignProfileAnalytics;
+}
+
+export interface Phase2Result {
+  stats?: {
+    adequate_count: number;
+    partially_adequate_count: number;
+    inadequate_count: number;
+    uncovered_sop_steps: number;
+    workpaper_gap_count: number;
+    unreconciled_count: number;
+  };
+  reconciliation?: ReconciliationRow[];
+  control_alignment?: ControlAlignmentRow[];
+  coverage_gaps?: CoverageGap[];
+  deficiencies?: DeficiencyRow[];
+  workpaper_coverage?: WorkpaperCoverageRow[];
+  analytics?: Phase2Analytics;
+}
+
+// ── Step 3: Evidence requirements & intake ────────────────────────────────
+
+export interface DeclaredEvidenceItem {
+  name: string;
+  note?: string | null;
+}
+
+export interface DeclaredEvidence {
   control_id: string;
-  status: "sufficient" | "insufficient" | "undetermined";
-  flags: string[];
-  earliest_evidence_date: string | null;
-  latest_evidence_date: string | null;
-  expected_instances: number | null;
-  evidence_instances_found: number;
-  coverage_pct: number;
+  items: DeclaredEvidenceItem[];
+  updated_at?: string | null;
+}
+
+export interface EvidenceScoreRow {
+  control_id: string;
+  score: number;
+  band: "good" | "fair" | "poor";
+}
+
+export interface EvidencePerControlRow {
+  control_id: string;
+  required: string[];
+  declared: string[];
+  uploaded_filenames: string[];
+  matched: string[];
+  declared_not_uploaded: string[];
+  missing: string[];
+  extra_declared: string[];
+  score: number;
+  severity: Severity | null;
+}
+
+export interface EscalatedGap {
+  control_id: string;
+  severity: Severity;
+  explanation: string;
+}
+
+export interface EvidenceStatusMatrixRow {
+  control_id: string;
+  expected: number;
+  received: number;
+  declared_not_uploaded: number;
+  missing: number;
+}
+
+export interface Phase3Analytics {
+  expected_total: number;
+  declared_total: number;
+  uploaded_total: number;
+  covered_total: number;
+  gap_total: number;
+  controls_fully_covered: number;
+  controls_partial: number;
+  controls_no_evidence: number;
+  gap_by_severity: Record<Severity, number>;
+  /** Fixed columns from the engine's own reconciliation — never a guessed
+   *  document-category grid. */
+  status_matrix: EvidenceStatusMatrixRow[];
+}
+
+export interface Phase3Result {
+  stats?: {
+    avg_evidence_score: number;
+    controls_without_evidence: number;
+    evidence_gaps_count: number;
+    severity_rollup: Record<Severity, number>;
+  };
+  required_documents?: Record<string, string[]>;
+  evidence_scores?: EvidenceScoreRow[];
+  per_control?: EvidencePerControlRow[];
+  escalated_gaps?: EscalatedGap[];
+  format_flags?: { control_id: string; detected_mode: string }[];
+  analytics?: Phase3Analytics;
+}
+
+// ── Step 4: Gap assessment ───────────────────────────────────────────────
+
+export interface GapAssessmentRow {
+  control_id: string;
+  control_description: string;
+  severity: Severity | null;
+  expected_documents: string[];
+  received_documents: string[];
+  missing_documents: string[];
+  rcm_field_gaps: string[];
+  sop_alignment: string | null;
+  reconciliation_pct: number | null;
+  design_verdict: string | null;
+  workpaper_months_missing: string[];
+  gap_areas: string[];
+  summary: string;
+}
+
+export interface CoverageFunnelStage {
+  stage: string;
+  count: number;
+  /** Controls excluded from this stage because they could not be assessed
+   *  (e.g. no reconciliation data) — kept apart from controls that were
+   *  assessed and genuinely didn't qualify. */
+  unassessed: number;
+}
+
+export interface GapAreaConcentration {
+  area: string;
+  control_count: number;
+  control_ids: string[];
+}
+
+export interface Phase4Analytics {
+  severity_distribution: Record<Severity | "none", number>;
+  coverage_funnel: CoverageFunnelStage[];
+  gap_area_concentration: GapAreaConcentration[];
+}
+
+export interface Phase4Result {
+  stats?: {
+    controls_assessed: number;
+    severity_rollup: Record<Severity | "none", number>;
+    fully_covered: number;
+    partial: number;
+    serious: number;
+  };
+  rows?: GapAssessmentRow[];
+  analytics?: Phase4Analytics;
 }
 
 export interface Artifact {
@@ -229,118 +392,3 @@ export interface RunAllResult {
   message: string;
 }
 
-export interface AttributeItem {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface SampleColumnItem {
-  key: string;
-  header: string;
-}
-
-export interface ControlAttributes {
-  control_id: string;
-  worksteps: string[];
-  attributes: AttributeItem[];
-  sample_columns: SampleColumnItem[];
-  quality_issues: string[];
-  status: "pending" | "approved";
-  updated_at: string;
-}
-
-export interface SampleResult {
-  control_id: string;
-  sample_id: string;
-  result: "PASS" | "FAIL";
-  attribute_results: Record<string, string>;
-  attribute_reasoning: Record<string, string>;
-  sample_details: Record<string, string>;
-  remarks: string;
-}
-
-export interface ControlTestResult {
-  control_id: string;
-  /** Short label derived from the RCM description, for card headings.
-   *  Optional: results stored before this field existed will not carry it. */
-  control_title?: string;
-  /** Inherent risk from the RCM row. */
-  risk_level?: string | null;
-  test_mode: string;
-  total_samples: number;
-  passed_samples: number;
-  failed_samples: number;
-  deviation_rate: number;
-  effectiveness_status: string;
-  deficiency_type: string | null;
-  overall_remarks: string;
-  sample_results: SampleResult[];
-}
-
-export interface SamplingResultRow {
-  control_id: string;
-  frequency: string;
-  sample_size: number;
-  fails: number;
-  verdict: string;
-  deficiency_type: string | null;
-  deviation_rate: number;
-}
-
-export interface FormatIssue {
-  control_id: string;
-  detected_mode: string;
-  message: string;
-}
-
-/** One FAILED sample, ranked for remediation. Scored from the control's
- *  Phase 1 risk level and its Phase 3 SOP alignment — see
- *  engines/remediation_engine.py for the weighting. */
-export interface RemediationPriority {
-  rank: number;
-  control_id: string;
-  sample_id: string;
-  priority: string;
-  score: number;
-  risk_level: string;
-  sop_alignment: string | null;
-  in_sop: boolean;
-  verdict: string;
-  failed_attributes: string[];
-  why: string;
-  remarks: string;
-}
-
-export interface Phase4Result {
-  stats?: {
-    effective: number;
-    partially_effective: number;
-    ineffective: number;
-    unclosed_exceptions: number;
-    format_issue_count: number;
-  };
-  overall_health_pct?: number;
-  tested_control_count?: number;
-  material_weakness_indicators?: { control_id: string; reason: string }[];
-  format_issues?: FormatIssue[];
-  sampling_results?: SamplingResultRow[];
-  control_results?: ControlTestResult[];
-  remediation_priorities?: RemediationPriority[];
-}
-
-export interface Phase3Result {
-  stats?: {
-    adequate_count: number;
-    partially_adequate_count: number;
-    inadequate_count: number;
-    uncovered_sop_steps: number;
-    timeline_issues_count: number;
-  };
-  sop_upload?: { filename: string; parsed_step_count: number };
-  control_alignment?: ControlAlignmentRow[];
-  coverage_gaps?: CoverageGap[];
-  control_type_mix?: { preventive: number; detective: number; corrective: number };
-  deficiencies?: DeficiencyRow[];
-  timeline_sufficiency?: TimelineSufficiencyRow[];
-}

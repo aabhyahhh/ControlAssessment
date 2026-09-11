@@ -1,9 +1,21 @@
 """
-Phase 3 — SOP ingestion, per-control design-field alignment, whole-process
-coverage gaps, deficiency classification, control-type mix. New logic (no
-ControlIris precedent), following the plan's 5-step spec. Every LLM call is
-per-control/per-step and parallelized with isolated failures, matching the
-reliability pattern used in risk_scorer.py / evidence_gap_engine.py.
+Step 2 — Adequacy Assessment.
+
+Inputs are the SOPs and monthly workpapers uploaded as one folder-per-control
+(plus any project-wide SOP). For each control this engine:
+
+  1. Parses SOP text into discrete process steps.
+  2. Reconciles the RCM row against the SOP + workpaper text — which RCM
+     fields the documents corroborate, contradict, or don't mention. Because
+     the redesigned RCM only requires a Control ID, this is where the rest of
+     the control's shape ("owned by X, performed monthly, preventive") is
+     actually established.
+  3. Checks monthly workpaper coverage against the audit period — one
+     workpaper per calendar month is expected; missing months are flagged.
+  4. Judges design alignment (SOP vs RCM) and classifies deficiencies.
+  5. Finds SOP steps with no matching control (whole-process coverage gaps).
+
+Every LLM call is per-control and parallelized with isolated failures.
 """
 
 from __future__ import annotations
@@ -12,6 +24,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any, Callable
 
 from app.engines.llm_utils import get_llm_client, parse_json_response
@@ -20,9 +33,17 @@ logger = logging.getLogger("engines.sop_adequacy_engine")
 
 ALIGNMENT_FIELDS = ["control_description", "control_frequency", "control_owner", "control_type", "control_nature"]
 
-_DEFICIENCY_DIMENSIONS = ["ownership", "frequency", "automation", "exception_management", "evidence_design"]
-
-_CORRECTIVE_KEYWORDS = ("remediat", "correct", "escalat", "root cause", "corrective action")
+# Fields the reconciliation tries to establish from the documents. Superset of
+# ALIGNMENT_FIELDS because reconciliation also cares about risk context.
+RECONCILE_FIELDS = [
+    "control_description",
+    "control_owner",
+    "control_frequency",
+    "control_type",
+    "control_nature",
+    "risk_description",
+    "process",
+]
 
 
 def _get_llm_client():
@@ -36,10 +57,8 @@ def _get_llm_client():
 
 def parse_sop_steps(extracted_text: str) -> list[dict[str, Any]]:
     """One LLM call parses the SOP body into {step_id, description,
-    mentions_control_ids}. Falls back to a naive paragraph split (still
-    usable for coverage-gap/alignment matching, just without an LLM's sense
-    of what counts as one discrete step) if the LLM is unavailable/fails —
-    never silently returns nothing."""
+    mentions_control_ids}. Falls back to a naive paragraph split if the LLM
+    is unavailable/fails — never silently returns nothing."""
     client, model = _get_llm_client()
     if client is None or not extracted_text.strip():
         return _fallback_split_steps(extracted_text)
@@ -91,44 +110,212 @@ def _fallback_split_steps(extracted_text: str) -> list[dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  2. Per-control design-field alignment
+#  2. Per-control reconciliation — establish the RCM row from the documents
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _find_relevant_sop_text(control: dict[str, Any], sop_steps: list[dict[str, Any]]) -> str:
-    """Cheap relevance filter: steps that explicitly mention this control ID,
-    else steps whose description shares significant words with the control
-    description (keeps the per-control LLM prompt small and grounded)."""
+def _relevant_doc_text(
+    control: dict[str, Any], sop_steps: list[dict[str, Any]], control_docs_text: str
+) -> tuple[str, bool]:
+    """Returns (text, control_specific).
+
+    `control_specific` is True only when the text is actually about THIS
+    control — an explicit control-ID mention in the SOP, or a per-control
+    SOP/workpaper. A generic word-overlap match against the whole SOP does
+    NOT count: it's context for the LLM, not evidence the control is
+    documented.
+    """
     control_id = control["control_id"]
     explicit = [s for s in sop_steps if control_id in s.get("mentions_control_ids", [])]
+    control_specific = bool(explicit) or bool(control_docs_text.strip())
+
     if explicit:
-        return "\n".join(s["description"] for s in explicit)
+        step_text = "\n".join(s["description"] for s in explicit)
+    else:
+        control_text = (control.get("control_description") or "").lower()
+        control_words = {w for w in re.findall(r"[a-z]{4,}", control_text)}
+        if control_words:
+            scored = []
+            for s in sop_steps:
+                step_words = set(re.findall(r"[a-z]{4,}", s["description"].lower()))
+                overlap = len(control_words & step_words)
+                if overlap > 0:
+                    scored.append((overlap, s["description"]))
+            scored.sort(key=lambda t: -t[0])
+            step_text = "\n".join(desc for _, desc in scored[:4])
+            if scored:
+                control_specific = True  # a real word-overlap hit on a described control
+        else:
+            step_text = "\n".join(s["description"] for s in sop_steps[:4])
 
-    control_text = (control.get("control_description") or "").lower()
-    control_words = {w for w in re.findall(r"[a-z]{4,}", control_text)}
-    if not control_words:
-        return "\n".join(s["description"] for s in sop_steps[:5])
-
-    scored = []
-    for s in sop_steps:
-        step_words = set(re.findall(r"[a-z]{4,}", s["description"].lower()))
-        overlap = len(control_words & step_words)
-        if overlap > 0:
-            scored.append((overlap, s["description"]))
-    scored.sort(key=lambda t: -t[0])
-    return "\n".join(desc for _, desc in scored[:3]) or "\n".join(s["description"] for s in sop_steps[:3])
+    parts = []
+    if step_text.strip():
+        parts.append("RELEVANT SOP STEPS:\n" + step_text)
+    if control_docs_text.strip():
+        parts.append("CONTROL DOCUMENTS (SOP / workpapers):\n" + control_docs_text[:6000])
+    return "\n\n".join(parts), control_specific
 
 
-def _alignment_for_control(control: dict[str, Any], sop_text: str) -> dict[str, Any]:
+def _reconcile_control(control: dict[str, Any], doc_text: str, control_specific: bool) -> dict[str, Any]:
+    """Per-field: does the documentation support / contradict / not mention
+    the RCM value? For a field blank in the RCM, the doc value the LLM reads
+    is captured as `doc_value` so step 2 can surface what the RCM should say.
+
+    `reconciliation_pct` is None when it can't be assessed (no LLM, or no
+    control-specific text) — the gap engine treats None as "undetermined",
+    not as a failure.
+    """
     control_id = control["control_id"]
-    if not sop_text.strip():
+    rcm_fields = {f: (control.get(f) or "") for f in RECONCILE_FIELDS}
+
+    if not doc_text.strip() or not control_specific:
+        return {
+            "control_id": control_id,
+            "reconciliation_pct": 0.0 if not doc_text.strip() else None,
+            "described_in_docs": False,
+            "fields": {
+                f: {"rcm_value": rcm_fields[f], "doc_value": "", "status": "absent"}
+                for f in RECONCILE_FIELDS
+            },
+        }
+
+    client, model = _get_llm_client()
+    if client is None:
+        return {
+            "control_id": control_id,
+            "reconciliation_pct": None,
+            "described_in_docs": True,
+            "fields": {
+                f: {"rcm_value": rcm_fields[f], "doc_value": "", "status": "undetermined"}
+                for f in RECONCILE_FIELDS
+            },
+        }
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an audit control-documentation assistant. You are given a control's RCM "
+                        "(Risk Control Matrix) field values — some may be blank — and the relevant SOP / "
+                        "workpaper text for that control. For EACH field decide:\n"
+                        "  'supported'  — the documents state a value consistent with the RCM value;\n"
+                        "  'contradicted' — the documents clearly state a different value;\n"
+                        "  'absent' — the documents don't address this field.\n"
+                        "When the RCM value is blank, still read the value the documents imply and put it "
+                        "in doc_value; status is 'absent' only if the documents say nothing about it, "
+                        "otherwise 'supported' with the doc value.\n"
+                        "Also return described_in_docs: true if the documents describe this control at all.\n"
+                        'Return ONLY JSON: {"described_in_docs": true, "fields": {"control_owner": '
+                        '{"status": "supported|contradicted|absent", "doc_value": "..."}, ...}}'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"CONTROL ID: {control_id}\n\n"
+                        f"RCM FIELDS:\n{json.dumps(rcm_fields)}\n\n{doc_text[:6000]}"
+                    ),
+                },
+            ],
+            max_completion_tokens=3000,
+            response_format={"type": "json_object"},
+        )
+        parsed = parse_json_response(resp, caller="sop_adequacy_engine._reconcile_control")
+        raw_fields = parsed.get("fields") or {}
+        fields: dict[str, Any] = {}
+        supported = 0
+        assessable = 0  # fields the docs actually spoke to, or the RCM has a value for
+        for f in RECONCILE_FIELDS:
+            entry = raw_fields.get(f) or {}
+            status = entry.get("status") if entry.get("status") in ("supported", "contradicted", "absent") else "absent"
+            doc_value = str(entry.get("doc_value") or "").strip()
+            fields[f] = {"rcm_value": rcm_fields[f], "doc_value": doc_value, "status": status}
+            if rcm_fields[f] or status != "absent":
+                assessable += 1
+            if status == "supported":
+                supported += 1
+        return {
+            "control_id": control_id,
+            "reconciliation_pct": round(supported / assessable, 4) if assessable else None,
+            "described_in_docs": bool(parsed.get("described_in_docs", True)),
+            "fields": fields,
+        }
+    except Exception as e:
+        logger.warning("Reconciliation failed for %s: %s", control_id, e)
+        return {
+            "control_id": control_id,
+            "reconciliation_pct": None,
+            "described_in_docs": True,
+            "fields": {
+                f: {"rcm_value": rcm_fields[f], "doc_value": "", "status": "undetermined"}
+                for f in RECONCILE_FIELDS
+            },
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  3. Monthly workpaper coverage vs the audit period
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _months_in_period(start: date, end: date) -> list[str]:
+    """Every calendar month the audit period touches, as 'YYYY-MM'."""
+    months: list[str] = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            year, month = year + 1, 1
+    return months
+
+
+def build_workpaper_coverage(
+    controls: list[dict[str, Any]],
+    workpaper_months_by_control: dict[str, list[str]],
+    audit_period_start: date,
+    audit_period_end: date,
+) -> list[dict[str, Any]]:
+    """One row per control: which audit-period months have a workpaper and
+    which are missing. `workpaper_months_by_control` maps control_id -> list
+    of 'YYYY-MM' strings (a month with an un-dateable workpaper contributes
+    nothing here and is reported via workpapers_without_month)."""
+    expected = _months_in_period(audit_period_start, audit_period_end)
+    rows: list[dict[str, Any]] = []
+    for c in controls:
+        cid = c["control_id"]
+        present = sorted(set(m for m in workpaper_months_by_control.get(cid, []) if m in expected))
+        missing = [m for m in expected if m not in present]
+        rows.append({
+            "control_id": cid,
+            "months_expected": expected,
+            "months_present": present,
+            "months_missing": missing,
+            "coverage_pct": round(len(present) / len(expected), 4) if expected else 0.0,
+        })
+    return rows
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  4. Per-control design-field alignment (SOP vs RCM)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _alignment_for_control(control: dict[str, Any], doc_text: str, control_specific: bool) -> dict[str, Any]:
+    control_id = control["control_id"]
+    # No documentation about this control at all — that's a real finding.
+    if not doc_text.strip() or not control_specific:
         return {"control_id": control_id, "alignment": "misaligned", "mismatches": [
-            {"field": "control_description", "rcm_value": control.get("control_description") or "", "sop_value": "(not found in SOP)"},
+            {"field": "control_description", "rcm_value": control.get("control_description") or "", "sop_value": "(not described in the SOP or workpapers)"},
         ]}
 
     client, model = _get_llm_client()
     if client is None:
-        return {"control_id": control_id, "alignment": "partial", "mismatches": []}
+        # Can't judge alignment without the LLM — say so rather than guess.
+        return {"control_id": control_id, "alignment": "not_assessed", "mismatches": []}
 
     rcm_fields = {f: (control.get(f) or "") for f in ALIGNMENT_FIELDS}
     try:
@@ -138,33 +325,23 @@ def _alignment_for_control(control: dict[str, Any], sop_text: str) -> dict[str, 
                 {
                     "role": "system",
                     "content": (
-                        "You are an audit control-design assistant. Compare a control's RCM (Risk Control "
-                        "Matrix) field values against the relevant SOP (Standard Operating Procedure) text "
-                        "for the same process. Judge whether the SOP supports each RCM field value. "
-                        "alignment: 'aligned' if all fields the SOP addresses match, 'partial' if some "
-                        "fields match and others don't or the SOP doesn't address them, 'misaligned' if "
-                        "the SOP clearly contradicts the RCM on one or more fields. Only report a mismatch "
-                        "for a field when the SOP text states something different — do not invent a SOP "
-                        "value for a field the SOP simply doesn't mention. "
+                        "You are an audit control-design assistant. Compare a control's RCM field values "
+                        "against the relevant SOP / workpaper text for the same process. Judge whether the "
+                        "documentation supports each RCM field value. "
+                        "alignment: 'aligned' if all fields the documents address match, 'partial' if some "
+                        "match and others don't or aren't addressed, 'misaligned' if the documents clearly "
+                        "contradict the RCM on one or more fields. Only report a mismatch for a field when "
+                        "the documents state something different — do not invent a value for a field the "
+                        "documents simply don't mention. "
                         'Return ONLY JSON: {"alignment": "aligned|partial|misaligned", '
                         '"mismatches": [{"field": "control_frequency", "sop_value": "..."}]}'
                     ),
                 },
                 {
                     "role": "user",
-                    "content": (
-                        f"RCM FIELDS:\n{json.dumps(rcm_fields)}\n\n"
-                        f"RELEVANT SOP TEXT:\n{sop_text[:3000]}"
-                    ),
+                    "content": f"RCM FIELDS:\n{json.dumps(rcm_fields)}\n\n{doc_text[:3500]}",
                 },
             ],
-            # Reasoning-model budget — see risk_scorer.py's
-            # _llm_infer_risk_level for why this needs real headroom (this
-            # call's larger prompt burns through hidden reasoning tokens
-            # faster than the smaller single-field calls elsewhere).
-            # Raised from 2000: observed finish_reason=length on real RCMs,
-            # which silently degraded every control to a 'partial' alignment
-            # verdict while still paying the full token cost.
             max_completion_tokens=3500,
             response_format={"type": "json_object"},
         )
@@ -178,53 +355,15 @@ def _alignment_for_control(control: dict[str, Any], sop_text: str) -> dict[str, 
         return {"control_id": control_id, "alignment": alignment, "mismatches": mismatches}
     except Exception as e:
         logger.warning("Alignment check failed for %s: %s", control_id, e)
-        return {"control_id": control_id, "alignment": "partial", "mismatches": []}
-
-
-def assess_control_alignment(
-    controls: list[dict[str, Any]],
-    sop_steps: list[dict[str, Any]],
-    on_progress: Callable[[str, int, int], None] | None = None,
-) -> list[dict[str, Any]]:
-    """`on_progress(control_id, done, total)` fires as each control's
-    alignment lands — this is the slow part of Phase 3 (one LLM call per
-    control), so it is what the progress bar tracks."""
-    results: list[dict[str, Any]] = []
-    total = len(controls)
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {
-            pool.submit(_alignment_for_control, c, _find_relevant_sop_text(c, sop_steps)): c["control_id"]
-            for c in controls
-        }
-        for future in as_completed(futures):
-            control_id = futures[future]
-            try:
-                results.append(future.result())
-            except Exception as e:
-                logger.warning("Alignment task raised for %s: %s", control_id, e)
-                results.append({"control_id": control_id, "alignment": "partial", "mismatches": []})
-            if on_progress is not None:
-                try:
-                    on_progress(control_id, len(results), total)
-                except Exception:
-                    logger.debug("alignment progress callback failed", exc_info=True)
-    order = {c["control_id"]: i for i, c in enumerate(controls)}
-    results.sort(key=lambda r: order.get(r["control_id"], 0))
-    return results
+        return {"control_id": control_id, "alignment": "not_assessed", "mismatches": []}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  3. Whole-process coverage gaps — SOP steps with no matching control
+#  5. Whole-process coverage gaps — SOP steps with no matching control
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def find_coverage_gaps(controls: list[dict[str, Any]], sop_steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Word-overlap similarity (no embedding API dependency) between each
-    SOP step and every control description; a step with no meaningfully
-    overlapping control is reported as uncovered. Threshold is deliberately
-    generous (>=1 shared significant word) since this is a coverage-gap
-    *finder*, not a precise matcher — false negatives here hide real gaps,
-    which is worse than an occasional false positive the user can dismiss."""
     control_word_sets = [
         (c["control_id"], set(re.findall(r"[a-z]{4,}", (c.get("control_description") or "").lower())))
         for c in controls
@@ -244,87 +383,250 @@ def find_coverage_gaps(controls: list[dict[str, Any]], sop_steps: list[dict[str,
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  4. Deficiency classification
+#  6. Deficiency classification
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _dimension_score(control: dict[str, Any], mismatches: list[dict[str, Any]], alignment: str) -> dict[str, int]:
-    """Simplified dimension scoring: each dimension is scored on its own
-    backing RCM field — missing entirely, contradicted by the SOP, or fine.
-    A mismatch on one field only penalizes that field's dimension; an
-    overall 'misaligned' verdict applies a small penalty to the rest rather
-    than dragging every dimension below the weak threshold, so the
-    weak_dimensions list stays a useful pointer to what actually needs
-    fixing instead of listing everything."""
+# Each design dimension maps to the one RCM field that documents it. No
+# numeric weight or score is attached to a dimension — its state per control
+# is one of four real, objectively-determined categories (see
+# `_dimension_state`), and portfolio-level analytics count those categories
+# rather than average an invented number.
+_DIMENSION_FIELD = {
+    "ownership": "control_owner",
+    "frequency": "control_frequency",
+    "automation": "control_nature",
+    "exception_management": "control_type",
+    "evidence_design": "control_description",
+}
+
+
+def _dimension_state(control: dict[str, Any], mismatches: list[dict[str, Any]], alignment: str) -> dict[str, str]:
+    """Per dimension, one of:
+      'contradicted'   — the SOP/workpapers state something different from the RCM field
+      'undocumented'   — the RCM field is blank, OR the documents don't affirmatively
+                         corroborate a populated field (see the 'partial' note below)
+      'not_assessed'   — no LLM verdict could be reached for this control at all
+      'supported'      — the documents corroborate a populated field
+    Derived entirely from `control_alignment`'s own mismatches list — no
+    numeric scoring, no averaging.
+
+    The prompt behind `alignment` allows 'partial' to mean "some fields match
+    and others AREN'T ADDRESSED" while instructing the LLM to report a
+    mismatch only for a field the documents actively contradict — so a
+    'partial' verdict can carry an empty `mismatches` list. Treating every
+    non-mismatched, populated field as 'supported' in that case would let a
+    control the LLM itself judged only partially aligned come out as fully
+    "Adequate" with zero weak dimensions. So under 'partial' a populated
+    field with no reported mismatch is 'undocumented' (not affirmatively
+    corroborated), not 'supported' — the same distinction 'aligned' fields
+    always got.
+    """
     mismatched_fields = {m["field"] for m in mismatches}
-    field_for_dimension = {
-        "ownership": "control_owner",
-        "frequency": "control_frequency",
-        "automation": "control_nature",
-        "exception_management": "control_type",
-        "evidence_design": "control_description",
-    }
-    scores = {}
-    for dim, field in field_for_dimension.items():
-        if not (control.get(field) or "").strip():
-            scores[dim] = 30
+    states: dict[str, str] = {}
+    for dim, field in _DIMENSION_FIELD.items():
+        has_value = bool((control.get(field) or "").strip())
+        if alignment == "not_assessed":
+            states[dim] = "not_assessed"
         elif field in mismatched_fields:
-            scores[dim] = 40
-        elif alignment == "misaligned":
-            scores[dim] = 75
+            states[dim] = "contradicted"
+        elif not has_value:
+            states[dim] = "undocumented"
+        elif alignment == "partial":
+            states[dim] = "undocumented"
         else:
-            scores[dim] = 90
-    return scores
+            states[dim] = "supported"
+    return states
 
 
-def _verdict_for_score(score: float) -> str:
-    if score >= 80:
-        return "Adequate"
-    if score >= 50:
+def _verdict_for_states(states: dict[str, str]) -> str:
+    """Rules-based band over real states — not a threshold on an invented
+    number. Any contradiction is disqualifying (the SOP disagrees with the
+    RCM); undocumented dimensions without contradiction are a lesser gap;
+    an all-not_assessed control has no verdict to give."""
+    values = states.values()
+    if all(v == "not_assessed" for v in values):
+        return "Not assessed"
+    if any(v == "contradicted" for v in values):
+        return "Inadequate"
+    if any(v == "undocumented" for v in values):
         return "Partially adequate"
-    return "Inadequate"
+    return "Adequate"
 
 
 def classify_deficiencies(control_alignment: list[dict[str, Any]], controls_by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     deficiencies = []
     for row in control_alignment:
         control = controls_by_id.get(row["control_id"], {})
-        dims = _dimension_score(control, row["mismatches"], row["alignment"])
-        overall = sum(dims.values()) / len(dims)
-        weak_dimensions = [dim for dim, score in dims.items() if score < 70]
+        states = _dimension_state(control, row["mismatches"], row["alignment"])
+        weak_dimensions = [dim for dim, state in states.items() if state in ("contradicted", "undocumented")]
         deficiencies.append({
             "control_id": row["control_id"],
-            "verdict": _verdict_for_score(overall),
-            "score": round(overall, 1),
+            "verdict": _verdict_for_states(states),
             "weak_dimensions": weak_dimensions,
-            # The per-dimension scores, not just the names of the weak ones.
-            # The design-profile radar plots the portfolio average per
-            # dimension, which cannot be reconstructed from a weak/not-weak
-            # list — a dimension at 75 and one at 90 both read "not weak".
-            "dimension_scores": dims,
+            "dimension_states": states,
         })
     return deficiencies
 
 
+def build_design_profile(deficiencies: list[dict[str, Any]]) -> dict[str, Any]:
+    """Portfolio-level counts per design dimension — the dynamic source for
+    the re-grounded radar. Each dimension's axis value (computed by the
+    frontend) is `supported / (total - not_assessed)`: the share of the
+    ASSESSABLE population the documentation actually corroborates. This is a
+    real ratio over a real population, never an invented score."""
+    dims = list(_DIMENSION_FIELD.keys())
+    counts = {
+        dim: {"supported": 0, "contradicted": 0, "undocumented": 0, "not_assessed": 0}
+        for dim in dims
+    }
+    for d in deficiencies:
+        states = d.get("dimension_states") or {}
+        for dim in dims:
+            state = states.get(dim, "not_assessed")
+            counts[dim][state] += 1
+
+    total = len(deficiencies)
+    any_assessed = any(
+        counts[dim]["not_assessed"] < total for dim in dims
+    ) if total else False
+
+    return {
+        "dimensions": [{"dimension": dim, **counts[dim]} for dim in dims],
+        "total_controls": total,
+        "assessed": any_assessed,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-#  5. Control-type mix
+#  7. Derived analytics — reconciliation exceptions + workpaper rollup
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def control_type_mix(controls: list[dict[str, Any]]) -> dict[str, int]:
-    mix = {"preventive": 0, "detective": 0, "corrective": 0}
-    for c in controls:
-        control_type = (c.get("control_type") or "").lower()
-        description = (c.get("control_description") or "").lower()
-        if any(k in description for k in _CORRECTIVE_KEYWORDS):
-            mix["corrective"] += 1
-        elif "prevent" in control_type:
-            mix["preventive"] += 1
-        elif "detect" in control_type:
-            mix["detective"] += 1
-        else:
-            mix["preventive"] += 1  # conservative default, matches source-project convention
-    return mix
+def build_reconciliation_summary(reconciliation: list[dict[str, Any]]) -> dict[str, Any]:
+    """Portfolio view of RCM<->documentation exceptions, over ASSESSABLE
+    cells only: a cell is assessable when the RCM has a value for that field
+    or the documents said something about it (the same `assessable` gate the
+    per-control reconciliation_pct uses). Cells from controls that could not
+    be assessed at all (no LLM) are excluded from the percentages, not
+    counted as a failure."""
+    counts = {"supported": 0, "contradicted": 0, "undocumented": 0, "undetermined": 0}
+    contradictions_by_field: dict[str, list[str]] = {}
+    exceptions_by_control: dict[str, dict[str, int]] = {}
+
+    for r in reconciliation:
+        cid = r["control_id"]
+        for field, cell in (r.get("fields") or {}).items():
+            status = cell.get("status", "absent")
+            if status == "undetermined":
+                counts["undetermined"] += 1
+            elif status == "contradicted":
+                counts["contradicted"] += 1
+                contradictions_by_field.setdefault(field, []).append(cid)
+                exceptions_by_control.setdefault(cid, {"contradicted": 0, "undetermined": 0})
+                exceptions_by_control[cid]["contradicted"] += 1
+            elif status == "absent":
+                # Whether the RCM field itself was blank or populated, the
+                # documents didn't address it either way — undocumented
+                # scope, not a disagreement to bucket as "supported" or
+                # count against the reconciled percentage.
+                counts["undocumented"] += 1
+            else:  # supported
+                counts["supported"] += 1
+
+        undetermined_here = sum(
+            1 for cell in (r.get("fields") or {}).values() if cell.get("status") == "undetermined"
+        )
+        if undetermined_here:
+            exceptions_by_control.setdefault(cid, {"contradicted": 0, "undetermined": 0})
+            exceptions_by_control[cid]["undetermined"] = undetermined_here
+
+    total_cells = sum(counts.values())
+    pct = (lambda k: round(counts[k] / total_cells, 4) if total_cells else None)
+
+    most_contradicted_fields = sorted(
+        (
+            {"field": f, "control_count": len(set(ids))}
+            for f, ids in contradictions_by_field.items()
+        ),
+        key=lambda x: -x["control_count"],
+    )
+    controls_by_exception_count = sorted(
+        (
+            {"control_id": cid, "contradicted": v["contradicted"], "undetermined": v["undetermined"]}
+            for cid, v in exceptions_by_control.items()
+            if v["contradicted"] or v["undetermined"]
+        ),
+        key=lambda x: (-x["contradicted"], -x["undetermined"]),
+    )
+
+    return {
+        "cell_counts": counts,
+        "pct_supported": pct("supported"),
+        "pct_contradicted": pct("contradicted"),
+        "pct_undocumented": pct("undocumented"),
+        "pct_undetermined": pct("undetermined"),
+        "most_contradicted_fields": most_contradicted_fields,
+        "controls_by_exception_count": controls_by_exception_count,
+    }
+
+
+def build_workpaper_analytics(workpaper_coverage: list[dict[str, Any]]) -> dict[str, Any]:
+    """Portfolio rollup over the per-control monthly coverage rows. A missing
+    month means documentation coverage is incomplete for that control-month —
+    it is never read here (or anywhere downstream) as the control having
+    failed."""
+    if not workpaper_coverage:
+        return {
+            "controls_complete": 0,
+            "controls_with_missing": 0,
+            "total_missing_control_months": 0,
+            "overall_coverage_pct": None,
+            "months_most_missing": [],
+        }
+
+    controls_complete = sum(1 for w in workpaper_coverage if not w["months_missing"])
+    controls_with_missing = sum(1 for w in workpaper_coverage if w["months_missing"])
+    total_missing = sum(len(w["months_missing"]) for w in workpaper_coverage)
+    total_present = sum(len(w["months_present"]) for w in workpaper_coverage)
+    total_expected = total_present + total_missing
+
+    missing_by_month: dict[str, int] = {}
+    for w in workpaper_coverage:
+        for m in w["months_missing"]:
+            missing_by_month[m] = missing_by_month.get(m, 0) + 1
+    months_most_missing = sorted(
+        ({"month": m, "missing_control_count": n} for m, n in missing_by_month.items()),
+        key=lambda x: (-x["missing_control_count"], x["month"]),
+    )
+
+    return {
+        "controls_complete": controls_complete,
+        "controls_with_missing": controls_with_missing,
+        "total_missing_control_months": total_missing,
+        "overall_coverage_pct": round(total_present / total_expected, 4) if total_expected else None,
+        "months_most_missing": months_most_missing,
+    }
+
+
+def build_adequacy_analytics(
+    reconciliation: list[dict[str, Any]],
+    workpaper_coverage: list[dict[str, Any]],
+    deficiencies: list[dict[str, Any]],
+    counts: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "adequacy_summary": {
+            "adequate": counts["adequate_count"],
+            "partially_adequate": counts["partially_adequate_count"],
+            "inadequate": counts["inadequate_count"],
+            "not_in_docs": counts["unreconciled_count"],
+            "total": len(deficiencies),
+        },
+        "reconciliation_summary": build_reconciliation_summary(reconciliation),
+        "workpaper_coverage": build_workpaper_analytics(workpaper_coverage),
+        "design_profile": build_design_profile(deficiencies),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -334,28 +636,100 @@ def control_type_mix(controls: list[dict[str, Any]]) -> dict[str, int]:
 
 def run_sop_adequacy_assessment(
     controls: list[dict[str, Any]],
-    sop_steps: list[dict[str, Any]],
+    project_sop_text: str,
+    docs_text_by_control: dict[str, str],
+    workpaper_months_by_control: dict[str, list[str]],
+    audit_period_start: date,
+    audit_period_end: date,
     on_progress: Callable[[str, int, int], None] | None = None,
 ) -> dict[str, Any]:
-    control_alignment = assess_control_alignment(controls, sop_steps, on_progress=on_progress)
-    coverage_gaps = find_coverage_gaps(controls, sop_steps)
+    """`project_sop_text` is any SOP uploaded without a control_id (whole
+    process). `docs_text_by_control` is the concatenated text of every
+    SOP/workpaper filed under that control. `workpaper_months_by_control`
+    maps control_id -> ['YYYY-MM', ...] for its dated workpapers."""
+    sop_steps = parse_sop_steps(project_sop_text) if project_sop_text.strip() else []
+
     controls_by_id = {c["control_id"]: c for c in controls}
+    total = len(controls)
+
+    # Per-control doc text = the control's own docs, plus a small slice of the
+    # whole-process SOP for context. `control_specific` says whether the text
+    # is genuinely about this control (explicit mention / per-control doc /
+    # real word-overlap) vs a generic SOP fallback.
+    doc_text_for = {
+        c["control_id"]: _relevant_doc_text(c, sop_steps, docs_text_by_control.get(c["control_id"], ""))
+        for c in controls
+    }
+
+    reconciliation: list[dict[str, Any]] = []
+    control_alignment: list[dict[str, Any]] = []
+    done = 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        recon_futs = {
+            pool.submit(_reconcile_control, c, *doc_text_for[c["control_id"]]): c["control_id"]
+            for c in controls
+        }
+        align_futs = {
+            pool.submit(_alignment_for_control, c, *doc_text_for[c["control_id"]]): c["control_id"]
+            for c in controls
+        }
+        for future in as_completed(list(recon_futs)):
+            cid = recon_futs[future]
+            try:
+                reconciliation.append(future.result())
+            except Exception as e:
+                logger.warning("Reconciliation task raised for %s: %s", cid, e)
+            done += 1
+            if on_progress:
+                try:
+                    on_progress(cid, done, total * 2)
+                except Exception:
+                    logger.debug("adequacy progress callback failed", exc_info=True)
+        for future in as_completed(list(align_futs)):
+            cid = align_futs[future]
+            try:
+                control_alignment.append(future.result())
+            except Exception as e:
+                logger.warning("Alignment task raised for %s: %s", cid, e)
+                control_alignment.append({"control_id": cid, "alignment": "not_assessed", "mismatches": []})
+            done += 1
+            if on_progress:
+                try:
+                    on_progress(cid, done, total * 2)
+                except Exception:
+                    logger.debug("adequacy progress callback failed", exc_info=True)
+
+    order = {c["control_id"]: i for i, c in enumerate(controls)}
+    reconciliation.sort(key=lambda r: order.get(r["control_id"], 0))
+    control_alignment.sort(key=lambda r: order.get(r["control_id"], 0))
+
+    coverage_gaps = find_coverage_gaps(controls, sop_steps)
     deficiencies = classify_deficiencies(control_alignment, controls_by_id)
-    mix = control_type_mix(controls)
+    workpaper_coverage = build_workpaper_coverage(
+        controls, workpaper_months_by_control, audit_period_start, audit_period_end
+    )
 
     adequate_count = sum(1 for d in deficiencies if d["verdict"] == "Adequate")
     partially_adequate_count = sum(1 for d in deficiencies if d["verdict"] == "Partially adequate")
     inadequate_count = sum(1 for d in deficiencies if d["verdict"] == "Inadequate")
+    workpaper_gap_count = sum(1 for w in workpaper_coverage if w["months_missing"])
+    unreconciled_count = sum(1 for r in reconciliation if not r["described_in_docs"])
+
+    counts = {
+        "adequate_count": adequate_count,
+        "partially_adequate_count": partially_adequate_count,
+        "inadequate_count": inadequate_count,
+        "uncovered_sop_steps": len(coverage_gaps),
+        "workpaper_gap_count": workpaper_gap_count,
+        "unreconciled_count": unreconciled_count,
+    }
 
     return {
+        "reconciliation": reconciliation,
         "control_alignment": control_alignment,
         "coverage_gaps": coverage_gaps,
         "deficiencies": deficiencies,
-        "control_type_mix": mix,
-        "counts": {
-            "adequate_count": adequate_count,
-            "partially_adequate_count": partially_adequate_count,
-            "inadequate_count": inadequate_count,
-            "uncovered_sop_steps": len(coverage_gaps),
-        },
+        "workpaper_coverage": workpaper_coverage,
+        "counts": counts,
+        "analytics": build_adequacy_analytics(reconciliation, workpaper_coverage, deficiencies, counts),
     }

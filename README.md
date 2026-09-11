@@ -1,6 +1,13 @@
 # ControlAssessment
 
-A standalone, KPMG-branded, AI-driven 4-phase control assessment tool: RACM Validation & Risk Prioritization → Evidence Review & Gap Identification → SOP-based Adequacy Assessment → Control Effectiveness Testing.
+A standalone, KPMG-branded, AI-driven 4-step control assessment tool:
+
+1. **RCM Intake** — load the RCM. Only a Control ID column is required; every other field is optional and gets reconciled from the SOP in step 2. Reports field completeness.
+2. **Adequacy Assessment** — upload the SOPs and monthly workpapers (one folder per Control ID, or individual files). Reconciles each control's RCM row against the documentation, judges design alignment, and checks that a workpaper exists for every month of the audit period (missing months are flagged).
+3. **Evidence Requirements & Intake** — the engine generates the required-documents list per control; the user enters the evidence they hold (a structured per-control list); the two are reconciled against each other and against the files actually uploaded.
+4. **Gap Assessment** — aggregates steps 1–3 into a per-control gap picture (received vs expected, where the gap lies, a severity of critical / high / medium / low) and a downloadable multi-sheet Excel summary. There is **no test-of-effectiveness workpaper**.
+
+> **Sept 2026 redesign.** The tool previously ran RACM Validation & Risk Prioritization → Evidence Review → Adequacy → Effectiveness Testing, with LLM risk-level inference in step 1 and a TOE attribute/sample workpaper in step 4 (described in the changelog below, M3–M7). The current flow above supersedes it. Risk-level inference, the P×I weighting gate, attribute generation, and per-sample TOE testing have been removed. `init.sql` was edited in place (the retired `sop_uploads`, `control_attributes` and `control_test_results` tables are dropped on startup); there is no data migration.
 
 This is an independent codebase — it shares no imports or files with the ControlIris project elsewhere in this repo. It reuses ControlIris's visual theme and architectural patterns only as reference.
 

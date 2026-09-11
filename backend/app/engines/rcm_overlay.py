@@ -1,10 +1,10 @@
 """
 Non-destructive overlay accessor. The original uploaded RCM (controls table,
 populated verbatim from the normalized upload) is never mutated in place;
-every edit — inline, chat-driven, or LLM-inferred — is written to
-control_overlays and merged in here. Every downstream read (risk scoring,
-evidence matching, testing) must go through this accessor, never read
-`controls` directly.
+every edit — inline, chat-driven, or re-uploaded — is written to
+control_overlays and merged in here. Every downstream read (completeness,
+adequacy reconciliation, evidence matching, gap assessment) must go through
+this accessor, never read `controls` directly.
 """
 
 from __future__ import annotations

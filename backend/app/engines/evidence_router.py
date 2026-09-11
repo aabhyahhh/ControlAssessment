@@ -1,9 +1,9 @@
 """
-Evidence-folder classification shared by Phase 2 (gap analysis) and Phase 4
-(effectiveness testing). Deliberately multi-sample-only per the build's
-explicit deviation from the generalized spec: there is no single_sample
-fallback. A control folder is either organized into samples, or it is
-flagged invalid_format and excluded from testing until reorganized.
+Evidence-folder classification used by step 3 (evidence assessment). A
+control folder is classified multi_sample (organized into sample subfolders
+or sample-named files), invalid_format (files present but no sample
+structure), or no_evidence. Step 3 uses this only as context — the redesigned
+flow does no per-sample testing.
 """
 
 from __future__ import annotations

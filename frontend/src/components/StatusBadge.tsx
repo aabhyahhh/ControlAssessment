@@ -31,7 +31,15 @@ const VARIANT_MAP: Record<string, "red" | "amber" | "green" | "critical" | "neut
   running: "amber",
   awaiting_approval: "amber",
   pending: "amber",
-  undetermined: "amber",
+
+  // Genuinely unknown states — never "attention" (amber) or "problem" (red).
+  // Missing/undetermined data must never be dressed up as a finding.
+  undetermined: "neutral",
+  "not assessed": "neutral",
+  "no data": "neutral",
+  "not available": "neutral",
+  "not applicable": "neutral",
+  "n/a": "neutral",
 
   low: "green",
   adequate: "green",

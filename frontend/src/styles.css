@@ -947,11 +947,32 @@ button {
   box-shadow: inset 3px 0 0 #7ea1e5;
 }
 
-.workflow-pct {
+/* Word status, not a percentage — a bare "100%" here reads identically to
+   the real coverage/completeness percentages shown in the data pane, which
+   is exactly the confusion this must never create. Colours mirror the
+   workflow dot for the same status, so the two never disagree. */
+.workflow-step-status {
   margin-left: auto;
-  font-size: 11px;
-  color: #9eb2dd;
+  font-size: 10.5px;
+  font-weight: 600;
   white-space: nowrap;
+  color: #9eb2dd;
+}
+
+.workflow-step-status.status-running {
+  color: #93c5fd;
+}
+
+.workflow-step-status.status-awaiting_approval {
+  color: #fcd34d;
+}
+
+.workflow-step-status.status-done {
+  color: #86efac;
+}
+
+.workflow-step-status.status-error {
+  color: #fca5a5;
 }
 
 .workflow-dot {
@@ -1379,65 +1400,6 @@ button {
   color: var(--muted);
 }
 
-/* ---------- Step progress bar ---------- */
-
-.step-bar {
-  display: flex;
-  align-items: flex-start;
-}
-
-.step-bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.step-bar-node-wrap {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.step-bar-node {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: 2px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.step-bar-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #fff;
-}
-
-.step-bar-line {
-  flex: 1;
-  height: 2px;
-}
-
-.step-bar-label {
-  margin-top: 6px;
-  font-size: 11.5px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.step-bar-label.done {
-  color: var(--green);
-}
-
-.step-bar-label.running {
-  color: var(--blue-2);
-  font-weight: 600;
-}
-
 /* ---------- Status badges ---------- */
 
 .status-badge {
@@ -1533,168 +1495,102 @@ button {
   margin-top: 2px;
 }
 
-/* ---------- Gauge ring ---------- */
+/* ---------- Field completeness bar (Step 1) ---------- */
 
-.pane-gauge-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 22px;
-}
-
-.gauge-ring {
+.field-completeness-bar {
   display: flex;
   flex-direction: column;
-  align-items: center;
-}
-
-.gauge-ring-value {
-  font-size: 22px;
-  font-weight: 700;
-  fill: var(--text);
-}
-
-.gauge-ring-caption {
-  text-align: center;
-  margin-top: 6px;
-}
-
-.gauge-ring-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.gauge-ring-sublabel {
-  font-size: 11.5px;
-  color: var(--muted);
-}
-
-/* ---------- Mini donut ---------- */
-
-.mini-donut {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.mini-donut-total {
-  font-size: 18px;
-  font-weight: 700;
-  fill: var(--text);
-}
-
-.mini-donut-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text);
-}
-
-.mini-donut-legend-item {
-  display: flex;
-  align-items: center;
   gap: 8px;
+  margin-bottom: 4px;
 }
 
-.mini-donut-swatch {
-  width: 11px;
-  height: 11px;
-  /* Round dots, matching the donut's own geometry — square chips read as a
-     table key rather than as part of the chart. */
-  border-radius: 999px;
-  border: 1.5px solid transparent;
-  flex-shrink: 0;
+.fc-bar-row {
+  display: grid;
+  grid-template-columns: 150px 1fr 56px;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
 }
 
-.mini-donut-legend-item {
-  padding: 3px 6px;
-  border-radius: 6px;
-  transition: background 150ms ease;
+.fc-bar-row:hover {
+  background: var(--pane-card);
+}
+
+.fc-bar-row.active {
+  background: var(--pastel-amber);
+}
+
+.fc-bar-row.dimmed {
+  opacity: 0.45;
+}
+
+.fc-bar-row:disabled {
   cursor: default;
 }
 
-.mini-donut-legend-item.active {
-  background: #f2f6fc;
+.fc-bar-row:disabled:hover {
+  background: none;
 }
 
-.mini-donut-caption {
-  font-size: 10px;
-  fill: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.fc-bar-label {
+  font-size: 12.5px;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ---------- Risk heatmap ---------- */
-
-.risk-heatmap {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 8px;
+.fc-bar-track {
+  position: relative;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--track);
+  cursor: help;
+  overflow: hidden;
 }
 
-.risk-heatmap-grid {
-  display: grid;
-  gap: 4px;
-  align-items: center;
+.fc-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--pastel-teal-ink);
+  transition: width 700ms var(--ease-out-soft);
 }
 
-.risk-heatmap-corner {
-  width: 70px;
-}
-
-.risk-heatmap-axis-label {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-  font-weight: 600;
-}
-
-.risk-heatmap-axis-label-left {
-  text-align: right;
-  padding-right: 8px;
-}
-
-.risk-heatmap-cell {
-  width: 100%;
-  min-width: 52px;
-  height: 46px;
-  /* A defined edge, not a white gap. Against the tinted pane the old
-     near-white border made low-count pastel cells melt into the background;
-     currentColor ties each border to that cell's own risk tone. */
-  border: 1px solid currentColor;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.fc-bar-count {
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  animation: chart-pop 380ms var(--ease-out-soft) both;
-  transition:
-    transform 180ms var(--ease-out-soft),
-    box-shadow 180ms var(--ease-out-soft);
-}
-
-.risk-heatmap-cell.interactive {
-  cursor: pointer;
-}
-
-.risk-heatmap-cell.interactive:hover {
-  transform: translateY(-2px) scale(1.06);
-  box-shadow: var(--shadow-hover);
-}
-
-.risk-heatmap-cell:disabled {
-  opacity: 0.55;
-}
-
-.risk-heatmap-axes-caption {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
   color: var(--muted);
-  padding: 0 4px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-bar-fill {
+    transition: none;
+  }
+}
+
+.pane-filter-clear {
+  margin-left: 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--pastel-blue-ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pane-filter-clear:hover {
+  text-decoration: underline;
 }
 
 /* ---------- Data pane sections / tables ---------- */
@@ -2773,19 +2669,11 @@ button {
    to centre itself with margin-inline while the gauge centred via its
    wrapper; two different mechanisms meant two slightly different axes. */
 .pane-center,
-.pane-gauge-row,
-.mini-donut,
 .chart-block {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
-}
-
-/* Content-sized grids still need the auto margins for browsers that shrink
-   them inside the flex column, but the axis now matches the wrappers above. */
-.risk-heatmap {
-  margin-inline: auto;
 }
 
 .pane-subsection-note {
@@ -3184,144 +3072,6 @@ button {
   color: var(--pastel-red-ink);
 }
 
-/* ---------- Phase 2: evidence dashboard ---------- */
-
-.evidence-dashboard {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-/* Was `@media (max-width: 2100px)` — a guess at "the pane is ~48% of the
-   viewport" that stacked the dashboard on essentially every real screen.
-   Measuring the pane directly means two-up actually appears when the pane
-   is genuinely wide enough for it. */
-@container pane (max-width: 760px) {
-  .evidence-dashboard {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.coverage-panel {
-  background: var(--pane-card);
-  border: 1px solid var(--pane-line);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-card);
-  min-width: 0;
-}
-
-.coverage-panel h4 {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.coverage-grid-legend {
-  display: flex;
-  justify-content: flex-end;
-  gap: 14px;
-  margin-bottom: 10px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.coverage-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.coverage-swatch {
-  width: 13px;
-  height: 11px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.coverage-swatch.received {
-  background: var(--blue-3);
-}
-
-.coverage-swatch.missing {
-  border: 1px dashed var(--pastel-red-ink);
-  background: transparent;
-}
-
-.coverage-swatch.na {
-  background: var(--track);
-}
-
-.coverage-grid-table {
-  display: grid;
-  gap: 5px 6px;
-  align-items: center;
-  overflow-x: auto;
-}
-
-.coverage-col-head {
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-  text-align: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.coverage-row-id {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-/* An escalated control is named in red so the row is findable without
-   reading across to the score. */
-.coverage-row-id.escalated {
-  color: var(--pastel-red-ink);
-}
-
-.coverage-cell {
-  height: 22px;
-  border-radius: 6px;
-  cursor: default;
-  transition:
-    transform 140ms var(--ease-out-soft),
-    filter 140ms ease;
-}
-
-.coverage-cell:hover {
-  transform: scale(1.07);
-  filter: brightness(1.05);
-}
-
-/* KPMG blue for a received document, not the mockup's purple. */
-.coverage-cell.received {
-  background: var(--blue-3);
-}
-
-.coverage-cell.missing {
-  background: transparent;
-  border: 1.5px dashed var(--pastel-red-ink);
-}
-
-.coverage-cell.na {
-  background: var(--track);
-}
-
-.coverage-row-score {
-  font-size: 11.5px;
-  font-weight: 700;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  padding-left: 4px;
-}
-
 /* ---------- Escalation funnel ---------- */
 
 .escalation-funnel {
@@ -3378,17 +3128,43 @@ button {
 }
 
 .funnel-track {
+  position: relative;
   height: 9px;
   background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   overflow: hidden;
+  cursor: help;
 }
 
 .funnel-fill {
   height: 100%;
   border-radius: 999px;
+  /* One consistent fill for every stage: a population-narrowing funnel has
+     no per-stage severity of its own (that's a different concept from the
+     gap severity shown elsewhere) — every bar segment is the same "how much
+     of the population is still here" idea, so one colour keeps that honest. */
+  background: linear-gradient(90deg, var(--blue-2), var(--blue-3));
   animation: bar-grow 780ms var(--ease-out-soft) both;
   transform-origin: left center;
+}
+
+.funnel-fill-unassessed {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.funnel-stage-unassessed {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(234, 240, 255, 0.68);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .funnel-fill {
+    animation: none;
+  }
 }
 
 /* ---------- Escalated gap cards (mockup layout) ---------- */
@@ -3419,30 +3195,6 @@ button {
   border-radius: 999px;
   animation: bar-grow 700ms var(--ease-out-soft) both;
   transform-origin: left center;
-}
-
-/* Some expected documents of this kind arrived, some did not. Rendered as a
-   half-filled cell so it is distinguishable from both extremes at a glance. */
-.coverage-cell.partial {
-  background: linear-gradient(90deg, var(--blue-3) 50%, transparent 50%);
-  border: 1.5px dashed var(--pastel-amber-ink);
-}
-
-.coverage-swatch.partial {
-  background: linear-gradient(90deg, var(--blue-3) 50%, transparent 50%);
-  border: 1px dashed var(--pastel-amber-ink);
-}
-
-/* Names the finding outright next to the control ID, so a row of empty cells
-   cannot be misread as "nothing was required". */
-.coverage-row-flag {
-  display: block;
-  margin-top: 2px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--pastel-red-ink);
 }
 
 /* ==========================================================================
@@ -3577,6 +3329,234 @@ button {
   border-radius: 999px;
   background: var(--pastel-amber);
   color: var(--pastel-amber-ink);
+}
+
+/* ==========================================================================
+   Reconciliation / workpaper exception summary strip (Step 2)
+   ========================================================================== */
+
+.recon-exception-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--pane-card);
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.recon-exception-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.recon-exception-metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.recon-exception-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.recon-exception-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.recon-exception-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.recon-exception-detail-label {
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.recon-field-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pastel-red);
+  color: var(--pastel-red-ink);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.recon-field-chip.active {
+  border-color: var(--pastel-red-ink);
+}
+
+.recon-control-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pastel-amber);
+  color: var(--pastel-amber-ink);
+}
+
+.recon-field-header.active {
+  background: var(--pastel-red);
+  color: var(--pastel-red-ink);
+}
+
+/* ==========================================================================
+   Distribution bar (Step 4 severity distribution) — a stacked, clickable bar
+   in place of a pie/donut so proportions read accurately and each segment
+   can drive a filter directly.
+   ========================================================================== */
+
+.distribution-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.distribution-bar-track {
+  display: flex;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--track);
+}
+
+.distribution-bar-segment {
+  height: 100%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: width 700ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+}
+
+.distribution-bar-segment.dimmed {
+  opacity: 0.35;
+}
+
+.distribution-bar-segment.active {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .distribution-bar-segment {
+    transition: opacity 160ms var(--ease-out-soft);
+  }
+}
+
+.distribution-bar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.distribution-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.distribution-legend-item:hover,
+.distribution-legend-item.active {
+  background: var(--pane-card);
+}
+
+.distribution-legend-item strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.distribution-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* ---------- Gap-area concentration (Step 4) ---------- */
+
+.gap-area-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gap-area-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 40px;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+}
+
+.gap-area-row:hover {
+  background: var(--pane-card);
+}
+
+.gap-area-row.active {
+  background: var(--pastel-amber);
+}
+
+.gap-area-row.dimmed {
+  opacity: 0.45;
+}
+
+.gap-area-label {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.gap-area-track {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.gap-area-fill {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--pastel-amber-ink);
+  transition: width 700ms var(--ease-out-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gap-area-fill {
+    transition: none;
+  }
+}
+
+.gap-area-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
 }
 
 /* ==========================================================================

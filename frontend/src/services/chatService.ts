@@ -1,5 +1,5 @@
 import { apiFetch, getToken } from "./api";
-import type { Artifact, ChatMessage, ControlAttributes } from "../types";
+import type { Artifact, ChatMessage } from "../types";
 
 /** Stored transcript for a project, oldest first. */
 export function listChatMessages(projectId: string) {
@@ -24,9 +24,7 @@ export interface SSEEventHandlers {
   onToolEnd?: (data: { tool_name: string; result: unknown; duration: number }) => void;
   onPhaseProgress?: (data: { phase: number; control_id: string; current: number; total: number }) => void;
   onResultsReady?: (data: { phase: number; result: unknown }) => void;
-  onAttributesReady?: (data: { attributes: ControlAttributes[] }) => void;
   onArtifactReady?: (data: { artifact: Artifact }) => void;
-  onAwaitingApproval?: (data: { phase: number }) => void;
   onDone?: () => void;
   onError?: (data: { message: string; correlation_id?: string }) => void;
 }
@@ -105,14 +103,8 @@ export function sendChatMessage(
             case "results_ready":
               handlers.onResultsReady?.(data as never);
               break;
-            case "attributes_ready":
-              handlers.onAttributesReady?.(data as never);
-              break;
             case "artifact_ready":
               handlers.onArtifactReady?.(data as never);
-              break;
-            case "awaiting_approval":
-              handlers.onAwaitingApproval?.(data as never);
               break;
             case "done":
               handlers.onDone?.();

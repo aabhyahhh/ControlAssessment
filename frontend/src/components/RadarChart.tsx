@@ -19,7 +19,14 @@ interface RadarChartProps {
   size?: number;
   /** Rings drawn behind the shape. */
   rings?: number;
-  max?: string;
+  /** Word shown in the hover card's "sub" line, e.g. "of controls supported"
+   *  — the axis's own `display` (e.g. "6/9") already carries the ratio, so
+   *  this only needs to name what's being measured. */
+  unitLabel?: string;
+  /** Text shown for a flagged axis; the caller decides what "weak" means
+   *  for its own data (contradicted, ineffective, etc). */
+  weakLabel?: string;
+  okLabel?: string;
 }
 
 /**
@@ -32,7 +39,14 @@ interface RadarChartProps {
  * The polygon grows from the centre on mount, and each vertex lifts under the
  * cursor so an individual dimension can be read without a legend.
  */
-export default function RadarChart({ axes, size = 300, rings = 4, max = "5" }: RadarChartProps) {
+export default function RadarChart({
+  axes,
+  size = 300,
+  rings = 4,
+  unitLabel,
+  weakLabel = "Flagged",
+  okLabel = "Within tolerance",
+}: RadarChartProps) {
   const { show, move, hide, card } = useHoverCard();
   const [hovered, setHovered] = useState<string | null>(null);
   const [grow, setGrow] = useState(0);
@@ -119,8 +133,8 @@ export default function RadarChart({ axes, size = 300, rings = 4, max = "5" }: R
                 setHovered(ax.key);
                 show(e, {
                   title: ax.label,
-                  value: `${ax.display} / ${max}`,
-                  sub: ax.weak ? "Flagged weak" : "Within tolerance",
+                  value: unitLabel ? `${ax.display} ${unitLabel}` : ax.display,
+                  sub: ax.weak ? weakLabel : okLabel,
                   items: ax.detail,
                   color: ax.weak ? "var(--pastel-red-ink)" : "var(--pastel-green-ink)",
                 });

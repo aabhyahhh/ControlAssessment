@@ -19,12 +19,11 @@ def _phase_done(ctx: AgentContext, phase: int) -> bool:
     return ctx.phase_status().get(str(phase)) == "done"
 
 
-class RunPhase1Tool(Tool):
-    name = "run_racm_validation"
+class RunStep1Tool(Tool):
+    name = "run_rcm_intake"
     description = (
-        "Phase 1. Validate the loaded RCM: score completeness, classify risk, build the risk heatmap and "
-        "priority queue. If controls are missing a Risk Level this pauses to ask the user for a "
-        "Probability x Impact weighting. Requires an RCM to have been uploaded."
+        "Step 1. Recompute the RCM completeness view. The RCM upload already does this and marks step 1 "
+        "done, so only call this after the RCM has been corrected/re-uploaded. Requires an RCM."
     )
     parameters: list[ToolParameter] = []
 
@@ -35,114 +34,13 @@ class RunPhase1Tool(Tool):
             with conn.cursor() as cur:
                 cur.execute("SELECT 1 FROM controls WHERE project_id = %s LIMIT 1", (ctx.project_id,))
                 if cur.fetchone() is None:
-                    return "No RCM has been uploaded yet. Ask the user to attach their RCM (Excel or CSV)."
+                    return "No RCM has been uploaded yet. Ask the user to attach their RCM (Excel or CSV) — only a Control ID column is required."
         return None
 
     def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.phases import run_risk_prioritization
+        from app.routes.phases import run_rcm_intake
 
-        res = run_risk_prioritization(ctx.project_id, ctx.auth)
-        result = res.result or {}
-        ctx.emit("results_ready", {"phase": 1, "result": result})
-
-        if result.get("awaiting_weighting"):
-            missing = result.get("controls_missing_risk_level") or []
-            return ToolResult(
-                success=True,
-                data={"awaiting_weighting": True, "controls_missing_risk_level": missing},
-                message=(
-                    f"{len(missing)} control(s) have no Risk Level. The user must choose a Probability x Impact "
-                    "weighting (default or custom) before I can infer them — the choice is shown in the right-hand "
-                    "panel. Tell them to pick one there, or say 'use the default weighting' and I'll apply it."
-                ),
-            )
-        if res.status == "awaiting_approval":
-            n = result.get("controls_pending_inference", 0)
-            return ToolResult(
-                success=True,
-                data={"pending": n},
-                message=(
-                    f"Inferred Risk Levels for {n} control(s). They're staged for review in the right-hand panel "
-                    "and need the user's approval before Phase 2 can run."
-                ),
-            )
-        stats = result.get("stats") or {}
-        return ToolResult(
-            success=True,
-            data=stats,
-            message=(
-                f"Phase 1 complete: {stats.get('controls_in_racm', 0)} controls, "
-                f"{round((stats.get('racm_completeness_pct') or 0) * 100)}% complete, "
-                f"{stats.get('high_risk_count', 0)} high-risk."
-            ),
-        )
-
-
-class SetRiskWeightingTool(Tool):
-    name = "set_risk_weighting"
-    description = (
-        "Apply the Probability x Impact weighting the user chose, then infer Risk Levels for controls that lack "
-        "them. Use use_default=true for the standard model (Low=1, Medium=3, High=6; bands 5/17/35). Only pass "
-        "custom weights if the user explicitly gave numbers."
-    )
-    parameters = [
-        ToolParameter("use_default", "boolean", "True to use the standard weighting model.", required=True),
-        ToolParameter("low", "integer", "Custom weight for Low (only if use_default is false)."),
-        ToolParameter("medium", "integer", "Custom weight for Medium (only if use_default is false)."),
-        ToolParameter("high", "integer", "Custom weight for High (only if use_default is false)."),
-    ]
-
-    def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.models.schemas import RiskWeightingRequest
-        from app.routes.phases import set_risk_weighting
-
-        use_default = bool(kwargs.get("use_default", True))
-        body = RiskWeightingRequest(use_default=True)
-        if not use_default:
-            low, medium, high = kwargs.get("low"), kwargs.get("medium"), kwargs.get("high")
-            if not all(isinstance(v, int) for v in (low, medium, high)):
-                return ToolResult(
-                    success=False,
-                    error="missing weights",
-                    message="A custom weighting needs whole-number weights for Low, Medium and High.",
-                )
-            # Bands scale with the weights so the top band stays reachable.
-            body = RiskWeightingRequest(
-                use_default=False,
-                score_map={"low": low, "medium": medium, "high": high},
-                bands=[
-                    {"threshold": low * medium, "label": "Low"},
-                    {"threshold": medium * medium + 1, "label": "Medium"},
-                    {"threshold": high * high - 1, "label": "High"},
-                ],
-            )
-
-        res = set_risk_weighting(ctx.project_id, body, ctx.auth)
-        result = res.result or {}
-        ctx.emit("results_ready", {"phase": 1, "result": result})
-        n = len(result.get("pending_risk_inferences") or {})
-        return ToolResult(
-            success=True,
-            data={"inferred": n},
-            message=(
-                f"Applied the {'default' if use_default else 'custom'} weighting and inferred Risk Levels for "
-                f"{n} control(s). They're staged in the right-hand panel for the user to approve."
-            ),
-        )
-
-
-class ApproveRiskInferencesTool(Tool):
-    name = "approve_risk_inferences"
-    description = (
-        "Commit the staged Risk Level inferences after the user has approved them. Only call this when the user "
-        "has clearly said to go ahead — this writes the inferred values into the working RCM."
-    )
-    parameters: list[ToolParameter] = []
-
-    def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.phases import approve_risk_inferences
-
-        res = approve_risk_inferences(ctx.project_id, ctx.auth)
+        res = run_rcm_intake(ctx.project_id, ctx.auth)
         result = res.result or {}
         ctx.emit("results_ready", {"phase": 1, "result": result})
         stats = result.get("stats") or {}
@@ -150,76 +48,36 @@ class ApproveRiskInferencesTool(Tool):
             success=True,
             data=stats,
             message=(
-                f"Risk levels approved and applied. Phase 1 complete: {stats.get('controls_in_racm', 0)} controls, "
-                f"{stats.get('high_risk_count', 0)} high-risk. Next the user needs to upload an evidence folder "
-                "for Phase 2."
+                f"Step 1: {stats.get('controls_in_racm', 0)} controls loaded, "
+                f"{round((stats.get('racm_completeness_pct') or 0) * 100)}% average field completeness. "
+                "NEXT STEP for the user: upload the SOPs and monthly workpapers for step 2 — a folder with one "
+                "subfolder per Control ID, or individual .docx/.pdf/.txt/.xlsx files. Say this in the reply."
             ),
         )
 
 
-class RunPhase2Tool(Tool):
-    name = "run_evidence_review"
+class RunStep2Tool(Tool):
+    name = "run_adequacy_assessment"
     description = (
-        "Phase 2. Generate the expected-documents checklist per control, score the uploaded evidence against it, "
-        "and escalate gaps. Requires Phase 1 done AND an evidence folder already uploaded."
+        "Step 2. Reconcile each control's RCM row against the uploaded SOPs and monthly workpapers, judge "
+        "design alignment, and check monthly workpaper coverage against the audit period. Requires step 1 "
+        "done AND at least one SOP/workpaper uploaded."
     )
     parameters: list[ToolParameter] = []
 
     def preconditions(self, ctx: AgentContext) -> str | None:
         if not _phase_done(ctx, 1):
-            return "Phase 1 isn't finished yet — complete the RACM validation (and any risk approval) first."
+            return "Step 1 isn't finished yet."
         from app.database import get_conn
 
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM evidence_files WHERE project_id = %s LIMIT 1", (ctx.project_id,))
+                cur.execute("SELECT 1 FROM adequacy_documents WHERE project_id = %s LIMIT 1", (ctx.project_id,))
                 if cur.fetchone() is None:
                     return (
-                        "No evidence has been uploaded yet. Ask the user to attach their evidence folder — one "
-                        "subfolder per Control ID, with samples inside as sample1/, sample2/... or sample_N-named "
-                        "files."
-                    )
-        return None
-
-    def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.phases import run_evidence_gap_analysis
-
-        res = run_evidence_gap_analysis(ctx.project_id, ctx.auth)
-        result = res.result or {}
-        ctx.emit("results_ready", {"phase": 2, "result": result})
-        stats = result.get("stats") or {}
-        return ToolResult(
-            success=True,
-            data=stats,
-            message=(
-                f"Phase 2 complete: {stats.get('avg_evidence_score', 0)}% average evidence completeness, "
-                f"{stats.get('evidence_gaps_count', 0)} escalated gap(s), "
-                f"{stats.get('controls_without_evidence', 0)} control(s) with no evidence, "
-                f"{stats.get('test_ready_controls', 0)} ready for testing. Phase 3 needs an SOP document."
-            ),
-        )
-
-
-class RunPhase3Tool(Tool):
-    name = "run_adequacy_assessment"
-    description = (
-        "Phase 3. Compare each control's design against the uploaded SOP, find SOP steps with no matching control, "
-        "and check whether evidence dates cover the audit period. Requires Phase 2 done AND an SOP uploaded."
-    )
-    parameters: list[ToolParameter] = []
-
-    def preconditions(self, ctx: AgentContext) -> str | None:
-        if not _phase_done(ctx, 2):
-            return "Phase 2 isn't finished yet — run the evidence review first."
-        from app.database import get_conn
-
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM sop_uploads WHERE project_id = %s LIMIT 1", (ctx.project_id,))
-                if cur.fetchone() is None:
-                    return (
-                        "No SOP has been uploaded. Ask the user to attach the Standard Operating Procedure "
-                        "document (.docx, .pdf or .txt) for this process."
+                        "No SOPs or workpapers uploaded. Ask the user to attach a folder (one subfolder per "
+                        "Control ID, with the monthly workpapers inside) or individual SOP/workpaper files "
+                        "(.docx, .pdf, .txt or .xlsx)."
                     )
         return None
 
@@ -228,99 +86,91 @@ class RunPhase3Tool(Tool):
 
         res = run_adequacy_assessment(ctx.project_id, ctx.auth)
         result = res.result or {}
-        ctx.emit("results_ready", {"phase": 3, "result": result})
+        ctx.emit("results_ready", {"phase": 2, "result": result})
         stats = result.get("stats") or {}
         return ToolResult(
             success=True,
             data=stats,
             message=(
-                f"Phase 3 complete: {stats.get('adequate_count', 0)} adequate, "
+                f"Step 2 complete: {stats.get('adequate_count', 0)} adequate, "
                 f"{stats.get('partially_adequate_count', 0)} partially adequate, "
-                f"{stats.get('inadequate_count', 0)} inadequate, "
-                f"{stats.get('uncovered_sop_steps', 0)} SOP step(s) with no matching control, "
-                f"{stats.get('timeline_issues_count', 0)} timeline issue(s)."
+                f"{stats.get('inadequate_count', 0)} inadequate; "
+                f"{stats.get('unreconciled_count', 0)} control(s) not described in the documentation, "
+                f"{stats.get('workpaper_gap_count', 0)} with missing workpaper months. "
+                "NEXT STEP: step 3 (evidence). The user can enter the per-control evidence list in the right-hand "
+                "panel and/or upload an evidence folder, then say 'proceed'; or say 'proceed' now to run step 3 "
+                "against whatever evidence is already in. Offer both in the reply."
             ),
         )
 
 
-class PreviewAttributesTool(Tool):
-    name = "generate_testing_attributes"
+class RunStep3Tool(Tool):
+    name = "run_evidence_assessment"
     description = (
-        "Phase 4 step 1. Generate the Yes/No testing attributes for every control. The user reviews and can edit "
-        "them before approving. Requires Phase 3 done."
+        "Step 3. Generate the required-documents list per control and reconcile it against the evidence the "
+        "user declared (per-control list) and the files actually uploaded. Requires step 2 done."
     )
     parameters: list[ToolParameter] = []
 
     def preconditions(self, ctx: AgentContext) -> str | None:
-        if not _phase_done(ctx, 3):
-            return "Phase 3 isn't finished yet — run the adequacy assessment first."
+        if not _phase_done(ctx, 2):
+            return "Step 2 (adequacy assessment) isn't finished yet."
         return None
 
     def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.attributes import preview_attributes
+        from app.routes.phases import run_evidence_assessment
 
-        rows = preview_attributes(ctx.project_id, ctx.auth)
-        payload = [r.model_dump() for r in rows]
-        ctx.emit("attributes_ready", {"attributes": payload})
-        issues = sum(len(r.quality_issues) for r in rows)
+        res = run_evidence_assessment(ctx.project_id, ctx.auth)
+        result = res.result or {}
+        ctx.emit("results_ready", {"phase": 3, "result": result})
+        stats = result.get("stats") or {}
+        rollup = stats.get("severity_rollup") or {}
         return ToolResult(
             success=True,
-            data={"controls": len(rows), "quality_issues": issues},
+            data=stats,
             message=(
-                f"Generated testing attributes for {len(rows)} control(s)"
-                + (f", with {issues} quality finding(s) flagged." if issues else ", all clean.")
-                + " They're in the right-hand panel — the user should review and edit before approving, because "
-                "approval freezes them against the test results."
+                f"Step 3 complete: {stats.get('avg_evidence_score', 0)}% average evidence completeness, "
+                f"{stats.get('evidence_gaps_count', 0)} control(s) with a gap "
+                f"(critical {rollup.get('critical', 0)}, high {rollup.get('high', 0)}, "
+                f"medium {rollup.get('medium', 0)}, low {rollup.get('low', 0)}). "
+                "NEXT STEP: step 4 (gap assessment) — you can run it now. Tell the user it's ready and that saying "
+                "'proceed' will run it and produce the downloadable Excel summary."
             ),
         )
 
 
-class ApproveAttributesAndTestTool(Tool):
-    name = "approve_attributes_and_run_testing"
+class RunStep4Tool(Tool):
+    name = "run_gap_assessment"
     description = (
-        "Phase 4 step 2. Freeze the testing attributes and run control effectiveness testing against the evidence "
-        "samples. Only call once the user has confirmed the attributes look right — approval is irreversible for "
-        "any control that then gets tested."
+        "Step 4. Aggregate steps 1-3 into the per-control gap picture: received vs expected, where the gap "
+        "lies, and a severity (critical/high/medium/low). The downloadable Excel summary is built from this. "
+        "Requires step 3 done."
     )
     parameters: list[ToolParameter] = []
 
     def preconditions(self, ctx: AgentContext) -> str | None:
         if not _phase_done(ctx, 3):
-            return "Phase 3 isn't finished yet."
-        from app.database import get_conn
-
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM control_attributes WHERE project_id = %s LIMIT 1", (ctx.project_id,))
-                if cur.fetchone() is None:
-                    return "No testing attributes exist yet — generate them first."
+            return "Step 3 (evidence assessment) isn't finished yet."
         return None
 
     def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.attributes import approve_attributes
-        from app.routes.phases import run_control_testing
+        from app.routes.phases import run_gap_assessment
 
-        approve_attributes(ctx.project_id, ctx.auth)
-        ctx.emit("token", {"text": "Attributes approved. Running effectiveness testing…\n"})
-
-        res = run_control_testing(ctx.project_id, ctx.auth)
+        res = run_gap_assessment(ctx.project_id, ctx.auth)
         result = res.result or {}
         ctx.emit("results_ready", {"phase": 4, "result": result})
         stats = result.get("stats") or {}
-        fmt = stats.get("format_issue_count", 0)
+        rollup = stats.get("severity_rollup") or {}
         return ToolResult(
             success=True,
             data=stats,
             message=(
-                f"Phase 4 complete across {result.get('tested_control_count', 0)} tested control(s): "
-                f"{stats.get('effective', 0)} effective, {stats.get('partially_effective', 0)} with exceptions, "
-                f"{stats.get('ineffective', 0)} ineffective. Overall control health "
-                f"{round((result.get('overall_health_pct') or 0) * 100)}%."
-                + (
-                    f" {fmt} control(s) could not be tested because their evidence isn't organized into samples."
-                    if fmt
-                    else ""
-                )
+                f"Step 4 complete: {stats.get('controls_assessed', 0)} controls assessed — "
+                f"{stats.get('fully_covered', 0)} fully covered, {stats.get('serious', 0)} with a "
+                f"critical/high gap. Severity: critical {rollup.get('critical', 0)}, high {rollup.get('high', 0)}, "
+                f"medium {rollup.get('medium', 0)}, low {rollup.get('low', 0)}. "
+                "All four steps are done. NEXT STEP: tell the user to say 'export' (or use the Reports panel) to "
+                "download the gap-assessment Excel summary."
             ),
         )
 
@@ -328,22 +178,15 @@ class ApproveAttributesAndTestTool(Tool):
 class ExportTool(Tool):
     name = "export_report"
     description = (
-        "Generate a downloadable Excel file. kind='final_report' for the multi-sheet workpaper covering every "
-        "phase; kind='attributes' for the editable testing-attribute workbook."
+        "Generate the downloadable gap-assessment Excel — the multi-sheet summary covering every step "
+        "(received vs expected, where the gap lies, severity, summary against RCM + SOP + evidence)."
     )
-    parameters = [
-        ToolParameter(
-            "kind", "string", "Which file to export.", required=True, enum=["final_report", "attributes"]
-        ),
-    ]
+    parameters: list[ToolParameter] = []
 
     def execute(self, ctx: AgentContext, **kwargs) -> ToolResult:
-        from app.routes.export import export_attributes, export_final_report
+        from app.routes.export import export_final_report
 
-        kind = kwargs.get("kind", "final_report")
-        artifact = export_attributes(ctx.project_id, ctx.auth) if kind == "attributes" else export_final_report(
-            ctx.project_id, ctx.auth
-        )
+        artifact = export_final_report(ctx.project_id, ctx.auth)
         ctx.emit("artifact_ready", {"artifact": artifact.model_dump(mode="json")})
         return ToolResult(
             success=True,
@@ -355,8 +198,8 @@ class ExportTool(Tool):
 class GetStatusTool(Tool):
     name = "get_project_status"
     description = (
-        "Read the current state of the engagement: which phases are done, and what the tool is waiting on. Call "
-        "this first when you're unsure what stage the user is at."
+        "Read the current state of the engagement: which steps are done, and what the tool is waiting on. "
+        "Call this first when you're unsure what stage the user is at."
     )
     parameters: list[ToolParameter] = []
 
@@ -374,32 +217,27 @@ class GetStatusTool(Tool):
                     (ctx.project_id,),
                 )
                 evidence = cur.fetchone()["n"]
-                cur.execute("SELECT count(*) AS n FROM sop_uploads WHERE project_id = %s", (ctx.project_id,))
-                sops = cur.fetchone()["n"]
-                cur.execute(
-                    "SELECT count(*) AS n FROM control_attributes WHERE project_id = %s", (ctx.project_id,)
-                )
-                attrs = cur.fetchone()["n"]
+                cur.execute("SELECT count(*) AS n FROM adequacy_documents WHERE project_id = %s", (ctx.project_id,))
+                adequacy_docs = cur.fetchone()["n"]
+                cur.execute("SELECT count(*) AS n FROM declared_evidence WHERE project_id = %s", (ctx.project_id,))
+                declared = cur.fetchone()["n"]
 
         data = {
             "phase_status": status,
             "controls_loaded": controls,
             "controls_with_evidence": evidence,
-            "sop_uploaded": sops > 0,
-            "attribute_schemas": attrs,
+            "adequacy_documents": adequacy_docs,
+            "controls_with_declared_evidence": declared,
         }
         return ToolResult(success=True, data=data, message=f"Current state: {data}")
 
 
 ALL_TOOLS: list[Tool] = [
     GetStatusTool(),
-    RunPhase1Tool(),
-    SetRiskWeightingTool(),
-    ApproveRiskInferencesTool(),
-    RunPhase2Tool(),
-    RunPhase3Tool(),
-    PreviewAttributesTool(),
-    ApproveAttributesAndTestTool(),
+    RunStep1Tool(),
+    RunStep2Tool(),
+    RunStep3Tool(),
+    RunStep4Tool(),
     ExportTool(),
 ]
 
@@ -413,8 +251,6 @@ def execute_tool(name: str, ctx: AgentContext, arguments: dict) -> ToolResult:
 
     blocked = tool.preconditions(ctx)
     if blocked:
-        # A precondition is not an error — it's information the agent should
-        # relay so the user knows exactly what to do next.
         return ToolResult(success=False, error="precondition", message=blocked)
 
     try:

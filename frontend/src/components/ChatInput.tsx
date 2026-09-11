@@ -105,14 +105,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                 <FileUp size={15} />
                 <span>
                   <strong>Attach file</strong>
-                  <em>RCM, SOP, or an edited workbook</em>
+                  <em>RCM, an SOP or workpaper, or an edited workbook</em>
                 </span>
               </button>
               <button type="button" role="menuitem" onClick={() => folderRef.current?.click()}>
                 <FolderUp size={15} />
                 <span>
                   <strong>Attach folder</strong>
-                  <em>Evidence — one subfolder per Control ID</em>
+                  <em>SOPs/workpapers or evidence — one subfolder per Control ID</em>
                 </span>
               </button>
             </div>

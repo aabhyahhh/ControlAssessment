@@ -9,18 +9,26 @@ interface PhaseDef {
 }
 
 const PHASES: PhaseDef[] = [
-  { step: 1, key: "phase1", label: "RACM Validation", sublabel: "Validation & Risk Prioritization" },
-  { step: 2, key: "phase2", label: "Evidence Review", sublabel: "Gap Identification" },
-  { step: 3, key: "phase3", label: "Adequacy", sublabel: "SOP-Based Design Assessment" },
-  { step: 4, key: "phase4", label: "Effectiveness", sublabel: "Control Testing" },
+  { step: 1, key: "phase1", label: "RCM Intake", sublabel: "Control inventory & completeness" },
+  { step: 2, key: "phase2", label: "Adequacy", sublabel: "SOPs, workpapers & reconciliation" },
+  { step: 3, key: "phase3", label: "Evidence", sublabel: "Requirements & intake" },
+  { step: 4, key: "phase4", label: "Gap Assessment", sublabel: "Received vs expected" },
 ];
 
-const STATUS_PCT: Record<PhaseStatus, number> = {
-  pending: 0,
-  running: 50,
-  awaiting_approval: 90,
-  done: 100,
-  error: 0,
+/** Step-progress labels, not analytical results — this tree tracks how far
+ *  the WORKFLOW has moved, never what the assessment found. A step showing
+ *  "Done" here says nothing about how many controls are adequately
+ *  documented, covered, or gap-free; that lives only in the data pane's own
+ *  analytics. Never render this as a bare "100%" next to a step name — on a
+ *  screen that also shows real coverage/completeness percentages, an
+ *  identical-looking pill invites exactly the confusion the two numbers must
+ *  never create. */
+const STATUS_LABEL: Record<PhaseStatus, string> = {
+  pending: "Not started",
+  running: "Running…",
+  awaiting_approval: "Review needed",
+  done: "Done",
+  error: "Error",
 };
 
 interface SidebarProps {
@@ -50,12 +58,16 @@ export default function Sidebar({ projectName, workflowProgress, activeStep, onS
       </div>
 
       <div className="tool-workflow">
-        <div className="tool-workflow-label">WORKFLOW</div>
+        <div
+          className="tool-workflow-label"
+          title="Step progress — how far the workflow has moved, not the assessment result"
+        >
+          WORKFLOW
+        </div>
         <div className="workflow-tree">
           {PHASES.map((phase) => {
             const status = workflowProgress[phase.key];
             const isActive = activeStep === phase.step;
-            const pct = STATUS_PCT[status];
             const canNavigate = status !== "pending" || phase.step === highestDoneStep + 1;
             return (
               <button
@@ -65,6 +77,7 @@ export default function Sidebar({ projectName, workflowProgress, activeStep, onS
                 onClick={() => canNavigate && onStepChange(phase.step)}
                 disabled={!canNavigate}
                 style={{ cursor: canNavigate ? "pointer" : "default", opacity: canNavigate ? 1 : 0.55 }}
+                title={`${phase.label}: ${STATUS_LABEL[status]} — step progress, not an assessment result`}
               >
                 <span className={`workflow-dot ${status}${isActive ? " active" : ""}`} />
                 <span>
@@ -73,7 +86,9 @@ export default function Sidebar({ projectName, workflowProgress, activeStep, onS
                     {phase.sublabel}
                   </span>
                 </span>
-                {status !== "pending" && <span className="workflow-pct">{pct}%</span>}
+                {status !== "pending" && (
+                  <span className={`workflow-step-status status-${status}`}>{STATUS_LABEL[status]}</span>
+                )}
               </button>
             );
           })}

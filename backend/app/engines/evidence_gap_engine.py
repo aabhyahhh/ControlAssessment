@@ -1,9 +1,17 @@
 """
-Phase 2 — required-documents checklist generation, evidence-vs-checklist
-validation, gap escalation, and document-completeness aggregation. New
-logic (no direct ControlIris precedent for this exact shape), but the
-per-control LLM-call-in-a-thread-pool-with-isolated-failures pattern
-mirrors risk_scorer.py / ControlIris's infer_risk_level.py.
+Step 3 — Evidence Requirements & Intake.
+
+  1. generate_required_documents — one LLM call per control produces the list
+     of document/evidence types an auditor would expect, informed by the RCM
+     row and (where available) the SOP/workpaper text reconciled in step 2.
+  2. assess_evidence_gaps — a three-way reconciliation per control:
+       expected  (this engine's generated list)
+       declared  (what the user says they hold, entered per-control in the UI)
+       present   (what was actually uploaded)
+     and the gaps between them.
+
+Severity here is coverage-driven, not risk-driven: the redesigned flow does
+no risk-level analysis.
 """
 
 from __future__ import annotations
@@ -16,40 +24,33 @@ from app.engines.llm_utils import get_llm_client, parse_json_response
 
 logger = logging.getLogger("engines.evidence_gap_engine")
 
-_ESCALATION_THRESHOLD = 50
-
 _FALLBACK_CHECKLIST = ["Supporting documentation", "Approval evidence", "System/control output"]
 
 
-def _generate_checklist_for_control(control_description: str) -> list[str]:
-    # Shared, connection-pooled client: this runs once per control inside a
-    # thread pool, so building one here would pay a fresh TLS handshake for
-    # every control in the RCM.
+def _generate_checklist_for_control(control_description: str, sop_context: str) -> list[str]:
     client, deployment = get_llm_client()
-    if client is None or not control_description.strip():
+    if client is None or not (control_description.strip() or sop_context.strip()):
         return _FALLBACK_CHECKLIST
 
     try:
+        user_content = f"Control Description: {control_description or '(not stated in RCM)'}"
+        if sop_context.strip():
+            user_content += f"\n\nSOP / workpaper context for this control:\n{sop_context[:3000]}"
         resp = client.chat.completions.create(
             model=deployment,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are an audit evidence-planning assistant. Given a control description, "
-                        "list the 3-6 specific document/evidence types an auditor would expect to see "
-                        "to test this control (e.g. 'Approval email', 'System-generated exception report', "
-                        "'Signed reconciliation'). Be concrete, not generic. "
+                        "You are an audit evidence-planning assistant. Given a control description (and any "
+                        "SOP/workpaper context), list the 3-6 specific document/evidence types an auditor "
+                        "would expect to see to test this control (e.g. 'Approval email', 'System-generated "
+                        "exception report', 'Signed reconciliation'). Be concrete, not generic. "
                         'Return ONLY JSON: {"documents": ["...", "..."]}'
                     ),
                 },
-                {"role": "user", "content": f"Control Description: {control_description}"},
+                {"role": "user", "content": user_content},
             ],
-            # See risk_scorer.py's _llm_infer_risk_level for why this needs
-            # real headroom on a reasoning model, not just enough for the
-            # visible JSON output.
-            # Raised from 1500: observed finish_reason=length, which silently
-            # fell back to the generic checklist for that control.
             max_completion_tokens=2500,
             response_format={"type": "json_object"},
         )
@@ -61,13 +62,22 @@ def _generate_checklist_for_control(control_description: str) -> list[str]:
         return _FALLBACK_CHECKLIST
 
 
-def generate_required_documents(controls: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """One LLM call per control, parallelized, isolated failures fall back
-    to a generic checklist rather than blocking the whole batch."""
+def generate_required_documents(
+    controls: list[dict[str, Any]],
+    sop_context_by_control: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
+    """One LLM call per control, parallelized, isolated failures fall back to
+    a generic checklist. `sop_context_by_control` (from step 2) sharpens the
+    checklist when a control's RCM description is thin."""
+    sop_context_by_control = sop_context_by_control or {}
     results: dict[str, list[str]] = {}
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {
-            pool.submit(_generate_checklist_for_control, c.get("control_description") or ""): c["control_id"]
+            pool.submit(
+                _generate_checklist_for_control,
+                c.get("control_description") or "",
+                sop_context_by_control.get(c["control_id"], ""),
+            ): c["control_id"]
             for c in controls
         }
         for future in as_completed(futures):
@@ -80,129 +90,222 @@ def generate_required_documents(controls: list[dict[str, Any]]) -> dict[str, lis
     return results
 
 
-def _match_documents(required: list[str], uploaded_filenames: list[str]) -> tuple[list[str], list[str]]:
-    """Lightweight fuzzy match: a required doc is 'matched' if any uploaded
-    filename shares a significant word with it (case-insensitive). No LLM
-    call per match (would be O(controls x filenames) LLM calls) — token
-    overlap is cheap and good enough for a checklist-completeness signal."""
-    if not uploaded_filenames:
-        return [], list(required)
-
-    stopwords = {"the", "of", "a", "an", "for", "and", "or", "to", "on"}
-
-    def tokens(s: str) -> set[str]:
-        return {w for w in "".join(c.lower() if c.isalnum() else " " for c in s).split() if w and w not in stopwords}
-
-    filename_tokens = [tokens(f) for f in uploaded_filenames]
-
-    matched, missing = [], []
-    for doc in required:
-        doc_tokens = tokens(doc)
-        if doc_tokens and any(doc_tokens & ft for ft in filename_tokens):
-            matched.append(doc)
-        else:
-            missing.append(doc)
-    return matched, missing
+def _tokens(s: str) -> set[str]:
+    stopwords = {"the", "of", "a", "an", "for", "and", "or", "to", "on", "in", "with"}
+    return {w for w in "".join(c.lower() if c.isalnum() else " " for c in s).split() if w and w not in stopwords}
 
 
-def _band_for_score(score: int) -> str:
-    if score >= 70:
-        return "good"
-    if score >= 30:
-        return "fair"
-    return "poor"
+def _fuzzy_covers(target: str, candidates: list[str]) -> bool:
+    """A target document is 'covered' by a candidate list if any candidate
+    shares a significant word with it (case-insensitive token overlap)."""
+    t = _tokens(target)
+    if not t:
+        return False
+    return any(t & _tokens(c) for c in candidates)
 
 
-def _severity(risk_rating: str, score: int) -> str | None:
-    """Escalation threshold is 50 for every risk rating — no control gets a
-    free pass on a fair/poor evidence score just because a rating-specific
-    band happened not to cover it. Within that, High-risk controls escalate
-    higher for the same score (High/Serious below 30, Medium/Moderate from
-    30 up to the threshold) than Medium-risk controls (Medium/Moderate
-    throughout), matching the plan's risk-weighted severity model."""
-    if score >= _ESCALATION_THRESHOLD:
+def _severity_for_coverage(expected_count: int, present_count: int, declared_present: bool, any_declared: bool) -> str | None:
+    """critical  — control has expected docs and nothing was provided at all
+    high      — <50% of expected present, and the user did declare holding
+                evidence (so the gap is collection/upload, not a design gap)
+    medium    — partial coverage
+    low       — near-complete
+    None      — fully covered."""
+    if expected_count == 0:
         return None
-    if risk_rating == "High":
-        return "High/Serious" if score < 30 else "Medium/Moderate"
-    if risk_rating == "Medium":
-        return "Medium/Moderate"
-    return "Low/Minor"
+    ratio = present_count / expected_count
+    if ratio >= 1.0:
+        return None
+    if present_count == 0:
+        return "critical" if not declared_present else "high"
+    if ratio < 0.5:
+        return "high" if any_declared else "medium"
+    if ratio < 0.85:
+        return "medium"
+    return "low"
+
+
+def build_evidence_analytics(per_control: list[dict[str, Any]]) -> dict[str, Any]:
+    """Portfolio EXPECTED -> DECLARED -> UPLOADED -> COVERED reconciliation —
+    the central concept for step 3. Every stage is counted at the DOCUMENT
+    level (not control level) so the funnel narrows over a single, comparable
+    population: individual expected evidence items.
+
+      expected  = every document the engine generated for any control
+      declared  = expected documents the user's declared list corresponds to
+                  (matched-and-uploaded counts as declared too — you can't
+                  have uploaded a document without holding it)
+      uploaded  = expected documents matched to an actual uploaded file
+      covered   = same as uploaded here: a document only counts as covered
+                  once a file exists for it, not merely because it was
+                  declared
+
+    Each stage is a strict subset of the one before it by construction, so
+    the funnel is a genuine population narrowing, not four independently
+    computed numbers that happen to be plotted together.
+    """
+    expected_total = 0
+    declared_total = 0
+    uploaded_total = 0
+    controls_fully_covered = 0
+    controls_partial = 0
+    controls_no_evidence = 0
+    gap_by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    status_matrix: list[dict[str, Any]] = []
+
+    for row in per_control:
+        required = row.get("required", [])
+        matched = row.get("matched", [])
+        declared_not_uploaded = row.get("declared_not_uploaded", [])
+        missing = row.get("missing", [])
+
+        expected_total += len(required)
+        uploaded_total += len(matched)
+        declared_total += len(matched) + len(declared_not_uploaded)
+
+        if not required:
+            pass  # nothing to expect: not fully covered, not a gap either
+        elif not missing and not declared_not_uploaded:
+            controls_fully_covered += 1
+        elif not matched and not declared_not_uploaded:
+            controls_no_evidence += 1
+        else:
+            controls_partial += 1
+
+        severity = row.get("severity")
+        if severity in gap_by_severity:
+            gap_by_severity[severity] += 1
+
+        status_matrix.append({
+            "control_id": row["control_id"],
+            "expected": len(required),
+            "received": len(matched),
+            "declared_not_uploaded": len(declared_not_uploaded),
+            "missing": len(missing),
+        })
+
+    gap_total = expected_total - uploaded_total
+
+    return {
+        "expected_total": expected_total,
+        "declared_total": declared_total,
+        "uploaded_total": uploaded_total,
+        "covered_total": uploaded_total,
+        "gap_total": gap_total,
+        "controls_fully_covered": controls_fully_covered,
+        "controls_partial": controls_partial,
+        "controls_no_evidence": controls_no_evidence,
+        "gap_by_severity": gap_by_severity,
+        "status_matrix": status_matrix,
+    }
 
 
 def assess_evidence_gaps(
     controls: list[dict[str, Any]],
     required_documents: dict[str, list[str]],
     uploaded_filenames_by_control: dict[str, list[str]],
+    declared_items_by_control: dict[str, list[str]],
     format_flags_by_control: dict[str, str],
 ) -> dict[str, Any]:
-    """controls must carry risk_level (from Phase 1, overlay-resolved).
-    uploaded_filenames_by_control: {control_id: [filename, ...]} — flat list
-    of all filenames under that control's evidence folder, any mode.
-    format_flags_by_control: {control_id: detected_mode} from evidence_router,
-    for the invalid_format cross-reference (Phase 2 doesn't block on this,
-    just surfaces it for early visibility ahead of Phase 4)."""
-    risk_by_control = {c["control_id"]: (c.get("risk_level") or "Medium") for c in controls}
+    """Three-way reconciliation per control.
 
+    - required  = required_documents[control_id]
+    - declared  = declared_items_by_control[control_id] (user's structured list)
+    - present   = filenames actually uploaded
+
+    A required doc is matched if it fuzzy-matches a present filename. It is
+    'declared not uploaded' if it fuzzy-matches a declared item but no file.
+    """
     evidence_scores: list[dict[str, Any]] = []
-    missing_documents: list[dict[str, Any]] = []
+    per_control: list[dict[str, Any]] = []
     escalated_gaps: list[dict[str, Any]] = []
-    total_matched = 0
-    total_missing = 0
     controls_without_evidence = 0
-    test_ready_controls = 0
 
     for c in controls:
         control_id = c["control_id"]
         required = required_documents.get(control_id, [])
         filenames = uploaded_filenames_by_control.get(control_id, [])
-        matched, missing = _match_documents(required, filenames)
+        declared = declared_items_by_control.get(control_id, [])
+
+        matched, declared_not_uploaded, missing = [], [], []
+        for doc in required:
+            if _fuzzy_covers(doc, filenames):
+                matched.append(doc)
+            elif declared and _fuzzy_covers(doc, declared):
+                declared_not_uploaded.append(doc)
+            else:
+                missing.append(doc)
+
+        # Items the user declared that don't correspond to any expected doc —
+        # not necessarily a problem, but surfaced for completeness.
+        extra_declared = [d for d in declared if not _fuzzy_covers(d, required)]
 
         score = round((len(matched) / len(required)) * 100) if required else 0
-        band = _band_for_score(score)
-
-        total_matched += len(matched)
-        total_missing += len(missing)
+        band = "good" if score >= 70 else "fair" if score >= 30 else "poor"
 
         if not filenames:
             controls_without_evidence += 1
-        if format_flags_by_control.get(control_id) == "multi_sample" and score >= _ESCALATION_THRESHOLD:
-            test_ready_controls += 1
 
         evidence_scores.append({"control_id": control_id, "score": score, "band": band})
 
-        if missing:
-            missing_documents.append({"control_id": control_id, "missing": missing})
+        severity = _severity_for_coverage(
+            expected_count=len(required),
+            present_count=len(matched),
+            declared_present=bool(declared),
+            any_declared=bool(declared),
+        )
+        row = {
+            "control_id": control_id,
+            "required": required,
+            "declared": declared,
+            "uploaded_filenames": filenames,
+            "matched": matched,
+            "declared_not_uploaded": declared_not_uploaded,
+            "missing": missing,
+            "extra_declared": extra_declared,
+            "score": score,
+            "severity": severity,
+        }
+        per_control.append(row)
 
-        risk_rating = risk_by_control.get(control_id, "Medium")
-        severity = _severity(risk_rating, score)
         if severity:
-            explanation = (
-                f"No evidence uploaded for a {risk_rating.lower()}-risk control."
-                if not filenames
-                else f"Only {score}% of expected documents matched ({len(matched)}/{len(required)})."
-            )
-            escalated_gaps.append(
-                {"control_id": control_id, "risk_rating": risk_rating, "severity": severity, "explanation": explanation},
-            )
+            if not filenames and not declared:
+                explanation = "No evidence uploaded and none declared for this control."
+            elif declared_not_uploaded:
+                explanation = (
+                    f"{len(declared_not_uploaded)} declared document(s) not yet uploaded; "
+                    f"{len(missing)} expected document(s) neither declared nor uploaded."
+                )
+            else:
+                explanation = f"Only {score}% of expected documents were matched to uploaded files ({len(matched)}/{len(required)})."
+            escalated_gaps.append({
+                "control_id": control_id,
+                "severity": severity,
+                "explanation": explanation,
+            })
 
     n = len(controls)
     avg_score = round(sum(e["score"] for e in evidence_scores) / n) if n else 0
+
+    severity_rollup = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    for g in escalated_gaps:
+        severity_rollup[g["severity"]] = severity_rollup.get(g["severity"], 0) + 1
 
     return {
         "stats": {
             "avg_evidence_score": avg_score,
             "controls_without_evidence": controls_without_evidence,
             "evidence_gaps_count": len(escalated_gaps),
-            "test_ready_controls": test_ready_controls,
+            "severity_rollup": severity_rollup,
         },
         "required_documents": required_documents,
         "evidence_scores": evidence_scores,
-        "document_completeness_donut": {"matched": total_matched, "missing": total_missing},
-        "missing_documents": missing_documents,
+        "per_control": per_control,
         "escalated_gaps": escalated_gaps,
         "format_flags": [
             {"control_id": cid, "detected_mode": mode}
             for cid, mode in format_flags_by_control.items()
             if mode in ("invalid_format",)
         ],
+        "analytics": build_evidence_analytics(per_control),
     }
