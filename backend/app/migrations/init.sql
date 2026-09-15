@@ -157,6 +157,46 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_project ON chat_messages (project_id, created_at ASC);
 
+-- Step 2 — emails sent to a control owner asking them to justify a
+-- reconciliation mismatch (RCM vs SOP/workpaper contradiction). One row per
+-- SEND; a single send can cover several controls/fields at once (batch).
+CREATE TABLE IF NOT EXISTS justification_emails (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id),
+    recipient_email  TEXT NOT NULL,
+    subject          TEXT NOT NULL,
+    body             TEXT NOT NULL,
+    sent_by          TEXT NOT NULL REFERENCES users(id),
+    sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    send_status      TEXT NOT NULL DEFAULT 'sent',
+    error_message    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_justification_emails_project ON justification_emails (project_id);
+
+-- One row per (email, control, field) mismatch the email addressed. The
+-- owner's reply is captured here manually (no inbox integration) — text
+-- and/or an uploaded attachment — then analyzed by the LLM against the
+-- specific mismatch it responds to.
+CREATE TABLE IF NOT EXISTS justification_email_items (
+    id                         TEXT PRIMARY KEY,
+    justification_email_id    TEXT NOT NULL REFERENCES justification_emails(id),
+    project_id                 TEXT NOT NULL REFERENCES projects(id),
+    control_id                 TEXT NOT NULL,
+    field                      TEXT,
+    mismatch_description       TEXT NOT NULL,
+    response_text              TEXT,
+    response_attachment_path   TEXT,
+    response_attachment_name   TEXT,
+    response_uploaded_at       TIMESTAMPTZ,
+    response_uploaded_by       TEXT REFERENCES users(id),
+    analysis_verdict           TEXT,
+    analysis_reasoning         TEXT,
+    analyzed_at                 TIMESTAMPTZ,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_justification_items_project_control
+    ON justification_email_items (project_id, control_id);
+
 CREATE TABLE IF NOT EXISTS artifacts (
     id             TEXT PRIMARY KEY,
     project_id     TEXT NOT NULL REFERENCES projects(id),

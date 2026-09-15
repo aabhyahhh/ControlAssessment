@@ -124,6 +124,42 @@ class DeclaredEvidenceResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+class JustificationEmailItemRequest(BaseModel):
+    control_id: str = Field(min_length=1)
+    field: str | None = None
+    mismatch_description: str = Field(min_length=1)
+
+
+class SendJustificationEmailRequest(BaseModel):
+    recipient_email: EmailStr
+    subject: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    items: list[JustificationEmailItemRequest] = Field(min_length=1)
+
+
+class JustificationEmailItemResponse(BaseModel):
+    id: str
+    control_id: str
+    field: str | None = None
+    mismatch_description: str
+    response_text: str | None = None
+    response_attachment_name: str | None = None
+    response_uploaded_at: datetime | None = None
+    analysis_verdict: str | None = None
+    analysis_reasoning: str | None = None
+    analyzed_at: datetime | None = None
+
+
+class JustificationEmailResponse(BaseModel):
+    id: str
+    recipient_email: str
+    subject: str
+    sent_at: datetime
+    send_status: str
+    error_message: str | None = None
+    items: list[JustificationEmailItemResponse] = Field(default_factory=list)
+
+
 class ArtifactResponse(BaseModel):
     id: str
     project_id: str

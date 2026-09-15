@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../services/api";
 import * as projectService from "../services/projectService";
 import type { Framework, Project } from "../types";
+import { formatDateDMY } from "../utils/date";
 
 const FRAMEWORK_LABELS: Record<Framework, string> = {
   generic: "Generic",
@@ -245,7 +246,7 @@ const Projects = () => {
                 <h3>{project.name}</h3>
                 <div className="project-card-meta">
                   <span>
-                    Audit period: {project.audit_period_start} → {project.audit_period_end}
+                    Audit period: {formatDateDMY(project.audit_period_start)} → {formatDateDMY(project.audit_period_end)}
                   </span>
                   <span>Step {project.current_phase} of 4</span>
                 </div>

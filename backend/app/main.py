@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import close_pool, run_migrations
-from app.routes import auth, chat, evidence, export, phases, projects, upload
+from app.routes import auth, chat, evidence, export, justification, phases, projects, upload
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(upload.router)
     app.include_router(evidence.router)
+    app.include_router(justification.router)
     app.include_router(phases.router)
     app.include_router(export.router)
 

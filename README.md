@@ -21,11 +21,13 @@ This is an independent codebase — it shares no imports or files with the Contr
 
 ### Database
 
-Uses a dedicated local Postgres 18 instance on **port 5433** (not the OS default 5432, which may be occupied by another Postgres install):
+Needs a **Postgres server already running and reachable** at the host/port in `backend/.env` (`POSTGRES_HOST`/`POSTGRES_PORT`, defaults `localhost`/`5432`). Nothing here starts Postgres itself or installs it — that part is still manual and OS-specific (Homebrew `pg_ctl`/`brew services` on macOS, the Postgres service on Windows, `systemctl`/`pg_ctlcluster` on Linux, etc.).
 
+Everything past "a server is reachable" is automatic: on every backend startup it creates the `control_assessment` database if it doesn't exist yet (no manual `createdb`), then applies `migrations/init.sql` (idempotent — safe to run on every start, creates all tables `IF NOT EXISTS`). If Postgres isn't reachable, the backend exits immediately with a plain-language error rather than a raw connection-refused traceback.
+
+If you'd rather create the database yourself first, that still works — the auto-create step just no-ops when it's already there:
 ```
-pg_ctl -D /opt/homebrew/var/postgresql@18 -l /tmp/ca_pg18.log -o "-p 5433" start
-createdb -h /tmp -p 5433 control_assessment
+createdb -h localhost -p 5432 control_assessment
 ```
 
 ### Backend
@@ -36,7 +38,7 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-python run_server.py     # http://localhost:4001, applies migrations on startup
+python run_server.py     # http://localhost:4001, creates the DB + tables on startup if needed
 ```
 
 ### Frontend

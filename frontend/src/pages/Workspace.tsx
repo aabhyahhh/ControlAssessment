@@ -15,6 +15,7 @@ import { getProject } from "../services/projectService";
 import { appendChatMessage, listChatMessages, sendChatMessage } from "../services/chatService";
 import { uploadAdequacyFile, uploadAdequacyFolder, uploadEvidenceFolder, uploadRcm } from "../services/uploadService";
 import { listDeclaredEvidence, upsertDeclaredEvidence } from "../services/evidenceService";
+import { listJustificationEmails } from "../services/justificationService";
 import { listControls } from "../services/uploadService";
 import {
   getPhaseProgress,
@@ -44,6 +45,7 @@ import type {
   Control,
   DeclaredEvidence,
   DeclaredEvidenceItem,
+  JustificationEmail,
   Phase1Result,
   Phase2Result,
   Phase3Result,
@@ -131,6 +133,7 @@ export default function Workspace() {
   const [phase4Busy, setPhase4Busy] = useState(false);
   const [declaredEvidence, setDeclaredEvidence] = useState<DeclaredEvidence[]>([]);
   const [declaredBusy, setDeclaredBusy] = useState(false);
+  const [justificationEmails, setJustificationEmails] = useState<JustificationEmail[]>([]);
 
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [showRepository, setShowRepository] = useState(false);
@@ -170,6 +173,7 @@ export default function Workspace() {
         }
         listControls(projectId).then(setControls).catch(() => undefined);
         listDeclaredEvidence(projectId).then(setDeclaredEvidence).catch(() => undefined);
+        listJustificationEmails(projectId).then(setJustificationEmails).catch(() => undefined);
         listArtifacts(projectId).then(setArtifacts).catch(() => undefined);
         listChatMessages(projectId)
           .then((rows) => {
@@ -549,17 +553,6 @@ export default function Workspace() {
     [activeStep, handleRcmFile, handleAdequacyFile],
   );
 
-  const handleFolderSelect = useCallback(
-    async (fileList: FileList) => {
-      // Route by the step the user is looking at: steps 1-2 → SOP/workpaper
-      // folder, step 3+ → evidence folder. This lets a user go back to step 2
-      // to re-upload documentation, or forward to step 3 to add evidence.
-      if (activeStep >= 3) await handleEvidenceFolder(fileList);
-      else await handleAdequacyFolder(fileList);
-    },
-    [activeStep, handleAdequacyFolder, handleEvidenceFolder],
-  );
-
   // ── Run all / exports ──────────────────────────────────────────────────
   const refreshAfterRunAll = useCallback(
     async (pid: string) => {
@@ -872,7 +865,8 @@ export default function Workspace() {
               ref={chatInputRef}
               onSend={handleSend}
               onFileSelect={handleFileSelect}
-              onFolderSelect={handleFolderSelect}
+              onAdequacyFolderSelect={handleAdequacyFolder}
+              onEvidenceFolderSelect={handleEvidenceFolder}
               disabled={isStreaming}
               showUpload
               acceptFile=".xlsx,.xls,.csv,.docx,.pdf,.txt"
@@ -987,7 +981,12 @@ export default function Workspace() {
                         onDownload={() => handlePhaseDownload(2)}
                         busy={exportBusy}
                       />
-                      <AdequacyPane result={phase2Result} />
+                      <AdequacyPane
+                        result={phase2Result}
+                        projectId={projectId}
+                        justificationEmails={justificationEmails}
+                        onJustificationEmailsChange={setJustificationEmails}
+                      />
                     </>
                   ) : (
                     <div style={{ padding: 20 }}>

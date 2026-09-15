@@ -43,8 +43,18 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8090"
 
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_address: str = ""
+    smtp_use_tls: bool = True
+
     @property
-    def postgres_conninfo(self) -> str:
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_from_address)
+
+    def _conninfo_for(self, dbname: str) -> str:
         """Build a libpq conninfo string from the discrete Postgres settings.
 
         Uses keyword/value form rather than a URL so that passwords containing
@@ -55,13 +65,24 @@ class Settings(BaseSettings):
         parts = {
             "host": self.postgres_host,
             "port": str(self.postgres_port),
-            "dbname": self.postgres_db,
+            "dbname": dbname,
         }
         if self.postgres_user:
             parts["user"] = self.postgres_user
         if self.postgres_password:
             parts["password"] = self.postgres_password
         return " ".join(f"{k}={_quote_conninfo(v)}" for k, v in parts.items())
+
+    @property
+    def postgres_conninfo(self) -> str:
+        return self._conninfo_for(self.postgres_db)
+
+    @property
+    def postgres_maintenance_conninfo(self) -> str:
+        """Conninfo for the always-present `postgres` maintenance database —
+        used only to check for / create `postgres_db` itself before the app's
+        own pool (which connects straight to `postgres_db`) is ever opened."""
+        return self._conninfo_for("postgres")
 
     @property
     def storage_path(self) -> Path:

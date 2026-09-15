@@ -124,7 +124,12 @@ function GapAreaBar({
           >
             <div className="gap-area-row-head">
               <span className="gap-area-label">{c.area}</span>
-              <span className="gap-area-count">{c.control_count}</span>
+              <span className="gap-area-count">
+                {c.control_count}
+                <span className="gap-area-chevron" aria-hidden="true">
+                  {isActive ? "▾" : "▸"}
+                </span>
+              </span>
             </div>
             <span className="gap-area-track">
               <span className="gap-area-fill" style={{ width: `${(c.control_count / max) * 100}%` }} />
@@ -283,21 +288,6 @@ export default function GapAssessmentPane({ result, onDownload, downloadBusy }: 
         <TypedSummary paragraphs={gapSummary(result)} />
       </div>
 
-      {analytics && analytics.gap_area_concentration.length > 0 && (
-        <div className="pane-subsection">
-          <h4>Where The Gap Actually Lies</h4>
-          <p className="pane-subsection-note">
-            Each control is attributed to the earliest break in the chain, so this reads as a work queue rather
-            than a score. Click a row to filter the controls below to that gap area.
-          </p>
-          <GapAreaBar
-            concentration={analytics.gap_area_concentration}
-            activeArea={activeArea}
-            onSelectArea={setActiveArea}
-          />
-        </div>
-      )}
-
       {rollup && (
         <div className="pane-subsection">
           <h4>Severity Spread</h4>
@@ -312,6 +302,21 @@ export default function GapAssessmentPane({ result, onDownload, downloadBusy }: 
       {stats && rollup && (
         <div className="pane-subsection">
           <ReadinessBanner stats={stats} rollup={rollup} onDownload={onDownload} downloadBusy={downloadBusy} />
+        </div>
+      )}
+
+      {analytics && analytics.gap_area_concentration.length > 0 && (
+        <div className="pane-subsection">
+          <h4>Where The Gap Actually Lies</h4>
+          <p className="pane-subsection-note">
+            Each control is attributed to the earliest break in the chain, so this reads as a work queue rather
+            than a score. Click a gap area to populate the controls below with just that area.
+          </p>
+          <GapAreaBar
+            concentration={analytics.gap_area_concentration}
+            activeArea={activeArea}
+            onSelectArea={setActiveArea}
+          />
         </div>
       )}
 

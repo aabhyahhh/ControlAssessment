@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { useHoverCard } from "./HoverCard";
+import { formatMonthYear } from "../utils/date";
 import type { WorkpaperCoverageAnalytics, WorkpaperCoverageRow } from "../types";
 
 interface WorkpaperCalendarGridProps {
@@ -41,21 +42,45 @@ export default function WorkpaperCalendarGrid({ rows, analytics }: WorkpaperCale
   return (
     <div className="wp-calendar">
       <div className="wp-calendar-scroll">
+        <div className="wp-calendar-missing-row" style={{ gridTemplateColumns: `100px repeat(${months.length}, minmax(28px, 1fr))` }}>
+          <span className="wp-calendar-missing-label">MISSING</span>
+          {months.map((m) => {
+            const count = missingByMonth.get(m) ?? 0;
+            return (
+              <span key={m} className="wp-calendar-missing-cell-wrap">
+                {count > 0 && (
+                  <span
+                    className="wp-calendar-missing-bar"
+                    style={{ height: `${(count / maxMissing) * grow * 100}%` }}
+                    onMouseEnter={(e) =>
+                      show(e, {
+                        title: formatMonthYear(m),
+                        value: `${count} control${count === 1 ? "" : "s"} missing this month`,
+                        color: "var(--pastel-amber-ink)",
+                      })
+                    }
+                    onMouseMove={move}
+                    onMouseLeave={hide}
+                  />
+                )}
+              </span>
+            );
+          })}
+        </div>
+
         <div
           className="wp-calendar-grid"
-          style={{ gridTemplateColumns: `100px repeat(${months.length}, minmax(28px, 1fr)) 34px` }}
+          style={{ gridTemplateColumns: `100px repeat(${months.length}, minmax(28px, 1fr))` }}
         >
           <span />
           {months.map((m) => (
             <span key={m} className="wp-calendar-month-head">
-              {m.slice(5)}
+              {formatMonthYear(m)}
             </span>
           ))}
-          <span />
 
           {sorted.map((r) => {
             const present = new Set(r.months_present);
-            const missingCount = r.months_missing.length;
             return (
               <Fragment key={r.control_id}>
                 <span className="wp-calendar-row-label">
@@ -70,7 +95,7 @@ export default function WorkpaperCalendarGrid({ rows, analytics }: WorkpaperCale
                       style={{ opacity: grow, transform: grow ? "scale(1)" : "scale(0.5)" }}
                       onMouseEnter={(e) =>
                         show(e, {
-                          title: `${r.control_id} · ${m}`,
+                          title: `${r.control_id} · ${formatMonthYear(m)}`,
                           value: isPresent ? "Workpaper filed" : "Not documented",
                           sub: isPresent ? undefined : "No workpaper was filed for this month — a coverage gap, not a control failure.",
                           color: isPresent ? "var(--pastel-green-ink)" : "var(--pastel-amber-ink)",
@@ -81,39 +106,9 @@ export default function WorkpaperCalendarGrid({ rows, analytics }: WorkpaperCale
                     />
                   );
                 })}
-                <span className="wp-calendar-delta">
-                  {missingCount > 0 ? `−${missingCount}` : ""}
-                </span>
               </Fragment>
             );
           })}
-        </div>
-
-        <div className="wp-calendar-missing-row" style={{ gridTemplateColumns: `100px repeat(${months.length}, minmax(28px, 1fr)) 34px` }}>
-          <span className="wp-calendar-missing-label">MISSING</span>
-          {months.map((m) => {
-            const count = missingByMonth.get(m) ?? 0;
-            return (
-              <span key={m} className="wp-calendar-missing-cell-wrap">
-                {count > 0 && (
-                  <span
-                    className="wp-calendar-missing-bar"
-                    style={{ height: `${(count / maxMissing) * grow * 100}%` }}
-                    onMouseEnter={(e) =>
-                      show(e, {
-                        title: m,
-                        value: `${count} control${count === 1 ? "" : "s"} missing this month`,
-                        color: "var(--pastel-amber-ink)",
-                      })
-                    }
-                    onMouseMove={move}
-                    onMouseLeave={hide}
-                  />
-                )}
-              </span>
-            );
-          })}
-          <span />
         </div>
       </div>
       {card}

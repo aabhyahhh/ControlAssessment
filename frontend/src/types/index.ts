@@ -163,6 +163,19 @@ export interface CoverageGap {
   coverage: "none";
 }
 
+export interface ControlSopGapField {
+  field: string;
+  status: "contradicted" | "undocumented";
+  rcm_value: string;
+  doc_value: string;
+}
+
+export interface ControlSopGap {
+  control_id: string;
+  gaps: ControlSopGapField[];
+  gap_count: number;
+}
+
 export type DimensionState = "supported" | "contradicted" | "undocumented" | "not_assessed";
 
 export interface DeficiencyRow {
@@ -261,6 +274,7 @@ export interface Phase2Result {
   reconciliation?: ReconciliationRow[];
   control_alignment?: ControlAlignmentRow[];
   coverage_gaps?: CoverageGap[];
+  control_sop_gaps?: ControlSopGap[];
   deficiencies?: DeficiencyRow[];
   workpaper_coverage?: WorkpaperCoverageRow[];
   analytics?: Phase2Analytics;
@@ -327,6 +341,21 @@ export interface Phase3Analytics {
   status_matrix: EvidenceStatusMatrixRow[];
 }
 
+export interface ContradictedEvidenceField {
+  field: string;
+  rcm_value: string;
+  doc_value: string;
+  justification_status: string;
+  justification_verdict: "justified" | "partially_justified" | "not_justified" | null;
+}
+
+export interface ControlEvidenceCategories {
+  control_id: string;
+  reconciled_from_sop_and_workpaper: string[];
+  contradicted_in_sop_or_workpaper: ContradictedEvidenceField[];
+  missing_from_evidence_folder: string[];
+}
+
 export interface Phase3Result {
   stats?: {
     avg_evidence_score: number;
@@ -339,7 +368,40 @@ export interface Phase3Result {
   per_control?: EvidencePerControlRow[];
   escalated_gaps?: EscalatedGap[];
   format_flags?: { control_id: string; detected_mode: string }[];
+  control_evidence_categories?: ControlEvidenceCategories[];
   analytics?: Phase3Analytics;
+}
+
+// ── Justification emails (Step 2 mismatch follow-up) ─────────────────────
+
+export interface JustificationEmailItem {
+  id: string;
+  control_id: string;
+  field: string | null;
+  mismatch_description: string;
+  response_text: string | null;
+  response_attachment_name: string | null;
+  response_uploaded_at: string | null;
+  analysis_verdict: "justified" | "partially_justified" | "not_justified" | null;
+  analysis_reasoning: string | null;
+  analyzed_at: string | null;
+}
+
+export interface JustificationEmail {
+  id: string;
+  recipient_email: string;
+  subject: string;
+  sent_at: string;
+  send_status: "sent" | "failed";
+  error_message?: string | null;
+  items: JustificationEmailItem[];
+}
+
+export interface SendJustificationEmailRequest {
+  recipient_email: string;
+  subject: string;
+  body: string;
+  items: { control_id: string; field: string | null; mismatch_description: string }[];
 }
 
 // ── Step 4: Gap assessment ───────────────────────────────────────────────

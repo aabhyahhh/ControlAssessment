@@ -221,12 +221,84 @@ def build_evidence_analytics(per_control: list[dict[str, Any]]) -> dict[str, Any
     }
 
 
+def build_control_evidence_categories(
+    per_control: list[dict[str, Any]],
+    reconciliation_by_control: dict[str, dict[str, Any]] | None = None,
+    justification_by_control_field: dict[tuple[str, str | None], dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Per-control, three enterprise-facing action categories that reconcile
+    step 3's evidence-collection outcome with step 2's RCM<->documentation
+    contradictions:
+
+      reconciled          — expected documents matched to an uploaded file
+                             (evidence-collection outcome, from `matched`).
+      contradicted        — RCM fields step 2 found the SOP/workpaper
+                             contradicts, each carrying its justification
+                             status (justified via a resolved email response,
+                             or still awaiting one). A field resolved by a
+                             'justified' verdict is dropped — it no longer
+                             reads as an open gap.
+      missing_from_folder — expected documents referenced in the checklist
+                             but never uploaded (from `missing` +
+                             `declared_not_uploaded` — the evidence-collection
+                             gap, distinct from a reconciliation contradiction).
+
+    `justification_by_control_field` keys on (control_id, field) with the
+    LATEST justification-email-item verdict for that mismatch; a missing key
+    means no email has been sent for it yet.
+    """
+    reconciliation_by_control = reconciliation_by_control or {}
+    justification_by_control_field = justification_by_control_field or {}
+    rows: list[dict[str, Any]] = []
+
+    for row in per_control:
+        control_id = row["control_id"]
+        recon = reconciliation_by_control.get(control_id)
+
+        contradicted_items = []
+        if recon:
+            for field, cell in (recon.get("fields") or {}).items():
+                if cell.get("status") != "contradicted":
+                    continue
+                justification = justification_by_control_field.get((control_id, field))
+                verdict = justification.get("analysis_verdict") if justification else None
+                if verdict == "justified":
+                    continue  # resolved — no longer an open gap
+                if justification is None:
+                    status_label = "no justification email sent yet"
+                elif not (justification.get("response_text") or "").strip():
+                    status_label = "awaiting the owner's response"
+                elif verdict is None:
+                    status_label = "response received, awaiting analysis"
+                elif verdict == "partially_justified":
+                    status_label = "partially justified — follow up before closing"
+                else:
+                    status_label = "not justified — still an open gap"
+                contradicted_items.append({
+                    "field": field,
+                    "rcm_value": cell.get("rcm_value", ""),
+                    "doc_value": cell.get("doc_value", ""),
+                    "justification_status": status_label,
+                    "justification_verdict": verdict,
+                })
+
+        rows.append({
+            "control_id": control_id,
+            "reconciled_from_sop_and_workpaper": list(row.get("matched", [])),
+            "contradicted_in_sop_or_workpaper": contradicted_items,
+            "missing_from_evidence_folder": list(row.get("missing", [])) + list(row.get("declared_not_uploaded", [])),
+        })
+    return rows
+
+
 def assess_evidence_gaps(
     controls: list[dict[str, Any]],
     required_documents: dict[str, list[str]],
     uploaded_filenames_by_control: dict[str, list[str]],
     declared_items_by_control: dict[str, list[str]],
     format_flags_by_control: dict[str, str],
+    reconciliation_by_control: dict[str, dict[str, Any]] | None = None,
+    justification_by_control_field: dict[tuple[str, str | None], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Three-way reconciliation per control.
 
@@ -328,5 +400,8 @@ def assess_evidence_gaps(
             for cid, mode in format_flags_by_control.items()
             if mode in ("invalid_format",)
         ],
+        "control_evidence_categories": build_control_evidence_categories(
+            per_control, reconciliation_by_control, justification_by_control_field
+        ),
         "analytics": build_evidence_analytics(per_control),
     }

@@ -18,6 +18,7 @@ const VARIANT_MAP: Record<string, "red" | "amber" | "green" | "critical" | "neut
   "not adequate": "red",
   "material weakness": "red",
   "significant deficiency": "red",
+  "not justified": "red",
   deficiency: "amber",
   tested: "green",
 
@@ -31,6 +32,10 @@ const VARIANT_MAP: Record<string, "red" | "amber" | "green" | "critical" | "neut
   running: "amber",
   awaiting_approval: "amber",
   pending: "amber",
+  "partially justified": "amber",
+  "awaiting justification": "amber",
+  "awaiting the owner's response": "amber",
+  "awaiting analysis": "amber",
 
   // Genuinely unknown states — never "attention" (amber) or "problem" (red).
   // Missing/undetermined data must never be dressed up as a finding.
@@ -43,6 +48,7 @@ const VARIANT_MAP: Record<string, "red" | "amber" | "green" | "critical" | "neut
 
   low: "green",
   adequate: "green",
+  justified: "green",
   // An approved attribute schema is a completed step, so it reads green like
   // every other done state — it was falling through to neutral grey, which
   // made approval look no different from "pending".

@@ -8,6 +8,7 @@ import ControlCoverageBars from "../ControlCoverageBars";
 import StepFooterNote from "../StepFooterNote";
 import TypedSummary from "../TypedSummary";
 import type {
+  ControlEvidenceCategories,
   DeclaredEvidence,
   DeclaredEvidenceItem,
   Phase3Analytics,
@@ -181,6 +182,41 @@ function evidenceSummary(analytics: Phase3Analytics | undefined, totalControls: 
   return paras;
 }
 
+/**
+ * Per-control reconciliation between step 3's evidence collection and step
+ * 2's RCM<->documentation contradictions, as three enterprise action
+ * pointers rather than raw expected/received/missing labels. A contradicted
+ * field already resolved by a 'justified' email response doesn't appear
+ * here at all — it's been folded back into "reconciled".
+ */
+function EvidenceCategoryDetail({ categories }: { categories: ControlEvidenceCategories | undefined }) {
+  if (!categories) return null;
+  const { reconciled_from_sop_and_workpaper, contradicted_in_sop_or_workpaper, missing_from_evidence_folder } =
+    categories;
+  return (
+    <>
+      {reconciled_from_sop_and_workpaper.length > 0 && (
+        <p style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-green-ink)" }}>
+          <strong>Reconciled from SOP and workpaper:</strong> {reconciled_from_sop_and_workpaper.join(", ")}
+        </p>
+      )}
+      {contradicted_in_sop_or_workpaper.map((f) => (
+        <p key={f.field} style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-red-ink)" }}>
+          <strong>Contradicted in SOP/workpaper: {f.field.replace(/_/g, " ")}</strong> — RCM says "
+          {f.rcm_value || "(blank)"}", docs say "{f.doc_value || "(not stated)"}".{" "}
+          <span style={{ color: "var(--muted)" }}>Status: {f.justification_status}.</span>
+        </p>
+      ))}
+      {missing_from_evidence_folder.length > 0 && (
+        <p style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-amber-ink)" }}>
+          <strong>Mentioned in workpaper/SOP but missing from evidence folder:</strong>{" "}
+          {missing_from_evidence_folder.join(", ")}
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function EvidencePane({
   result,
   controlIds,
@@ -194,6 +230,10 @@ export default function EvidencePane({
     [declared],
   );
   const perControl = result?.per_control ?? [];
+  const evidenceCategoriesByControl = useMemo(
+    () => new Map((result?.control_evidence_categories ?? []).map((c) => [c.control_id, c])),
+    [result?.control_evidence_categories],
+  );
   const stats = result?.stats;
   const rollup = stats?.severity_rollup;
   const analytics = result?.analytics;
@@ -266,6 +306,7 @@ export default function EvidencePane({
           {controlIds.map((cid) => {
             const row = perControl.find((r) => r.control_id === cid);
             const items = declaredByControl.get(cid) ?? [];
+            const categories = evidenceCategoriesByControl.get(cid);
             return (
               <div
                 key={cid}
@@ -297,26 +338,7 @@ export default function EvidencePane({
                   />
                   {row && (
                     <div style={{ marginTop: 14 }}>
-                      {row.required.length > 0 && (
-                        <p style={{ fontSize: 12.5, margin: "6px 0" }}>
-                          <strong>Expected:</strong> {row.required.join(", ")}
-                        </p>
-                      )}
-                      {row.matched.length > 0 && (
-                        <p style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-green-ink)" }}>
-                          <strong>Received:</strong> {row.matched.join(", ")}
-                        </p>
-                      )}
-                      {row.declared_not_uploaded.length > 0 && (
-                        <p style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-amber-ink)" }}>
-                          <strong>Declared but not uploaded:</strong> {row.declared_not_uploaded.join(", ")}
-                        </p>
-                      )}
-                      {row.missing.length > 0 && (
-                        <p style={{ fontSize: 12.5, margin: "6px 0", color: "var(--pastel-red-ink)" }}>
-                          <strong>Missing:</strong> {row.missing.join(", ")}
-                        </p>
-                      )}
+                      <EvidenceCategoryDetail categories={categories} />
                     </div>
                   )}
                 </CollapsibleRow>

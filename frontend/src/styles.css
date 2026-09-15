@@ -826,6 +826,71 @@ button {
   gap: 14px;
 }
 
+.modal-card.wide {
+  max-width: 620px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.modal-field span {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.modal-field input,
+.modal-field textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  background: var(--pane-bg, transparent);
+  color: var(--text);
+  resize: vertical;
+}
+
+.justification-mismatch-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.justification-email-card {
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.justification-email-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.justification-item-row {
+  border-top: 1px solid var(--pane-line);
+  padding-top: 8px;
+}
+
+.justification-item-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .modal-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2817,6 +2882,19 @@ button {
   line-height: 1.5;
 }
 
+.pane-subsection-note-strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pane-subsection-callout {
+  background: var(--pastel-amber);
+  color: var(--pastel-amber-ink);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-weight: 500;
+}
+
 /* ==========================================================================
    Attribute generation progress
    ========================================================================== */
@@ -3820,6 +3898,13 @@ button {
   color: var(--pastel-red-ink);
 }
 
+.recon-cell-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
 /* ---------- Field support bars (Step 2 — "what the documents establish") ---------- */
 
 .field-support-bars {
@@ -3936,7 +4021,8 @@ button {
   display: grid;
   gap: 4px;
   align-items: center;
-  min-width: 480px;
+  min-width: 600px;
+  margin-top: 10px;
 }
 
 .wp-calendar-month-head {
@@ -3944,6 +4030,7 @@ button {
   color: var(--muted);
   text-align: center;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .wp-calendar-row-label {
@@ -3972,21 +4059,12 @@ button {
   border: 1.5px dashed var(--pastel-amber-ink);
 }
 
-.wp-calendar-delta {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--pastel-amber-ink);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 .wp-calendar-missing-row {
   display: grid;
   gap: 4px;
   align-items: end;
   height: 34px;
-  margin-top: 10px;
-  min-width: 480px;
+  min-width: 600px;
 }
 
 .wp-calendar-missing-label {
@@ -4190,21 +4268,28 @@ button {
   display: block;
   width: 100%;
   background: none;
-  border: none;
-  padding: 6px;
+  border: 1px solid var(--pane-line);
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
   font: inherit;
-  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft), border-color 160ms var(--ease-out-soft);
 }
 
 .gap-area-row:hover {
   background: var(--pane-card);
+  border-color: var(--pastel-violet-ink);
+}
+
+.gap-area-row:focus-visible {
+  outline: 2px solid var(--pastel-violet-ink);
+  outline-offset: 1px;
 }
 
 .gap-area-row.active {
   background: var(--pastel-amber);
+  border-color: var(--pastel-amber-ink);
 }
 
 .gap-area-row.dimmed {
@@ -4225,9 +4310,17 @@ button {
 }
 
 .gap-area-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+.gap-area-chevron {
+  font-size: 11px;
+  color: var(--pastel-violet-ink);
 }
 
 .gap-area-track {

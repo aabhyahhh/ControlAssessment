@@ -288,14 +288,29 @@ def _run_phase3_body(project_id: str, auth: dict) -> PhaseResultResponse:
 
         # Reuse step 2's reconciliation text as extra context for the checklist.
         step2 = _load_done_result(conn, project_id, 2)
+        reconciliation_rows = step2.get("reconciliation") or []
         recon_text = {
             r["control_id"]: "; ".join(
                 f"{f}: {v.get('doc_value', '')}"
                 for f, v in (r.get("fields") or {}).items()
                 if v.get("doc_value")
             )
-            for r in (step2.get("reconciliation") or [])
+            for r in reconciliation_rows
         }
+        reconciliation_by_control = {r["control_id"]: r for r in reconciliation_rows}
+
+        # Latest justification-email verdict per (control, field) — resolves
+        # a step-2 contradiction if the owner's response was judged
+        # 'justified', otherwise flags it as still awaiting justification.
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT control_id, field, response_text, analysis_verdict "
+                "FROM justification_email_items WHERE project_id = %s ORDER BY created_at",
+                (project_id,),
+            )
+            justification_by_control_field: dict[tuple, dict] = {}
+            for row in cur.fetchall():
+                justification_by_control_field[(row["control_id"], row["field"])] = row
 
         progress.set_progress(project_id, progress.EVIDENCE, 0, len(controls), activity="Starting checklist generation")
         try:
@@ -310,7 +325,8 @@ def _run_phase3_body(project_id: str, auth: dict) -> PhaseResultResponse:
             progress.clear_progress(project_id, progress.EVIDENCE)
 
         result_payload = assess_evidence_gaps(
-            controls, required_documents, filenames_by_control, declared_by_control, mode_by_control
+            controls, required_documents, filenames_by_control, declared_by_control, mode_by_control,
+            reconciliation_by_control, justification_by_control_field,
         )
 
         _write_phase(conn, project_id, 3, result_payload, auth["user_id"], advance_current=True)

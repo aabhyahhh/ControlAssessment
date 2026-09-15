@@ -84,6 +84,19 @@ def adequacy_dir(project_id: str, control_id: str | None) -> Path:
     return path
 
 
+def justification_response_dir(project_id: str, item_id: str) -> Path:
+    path = get_settings().storage_path / "uploads" / project_id / "justification-responses" / item_id
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_justification_response_file(project_id: str, item_id: str, original_name: str, content: bytes) -> Path:
+    directory = justification_response_dir(project_id, item_id)
+    dest = directory / f"{uuid.uuid4().hex}_{_safe_filename(original_name)}"
+    dest.write_bytes(content)
+    return dest
+
+
 def save_adequacy_file(project_id: str, control_id: str | None, original_name: str, content: bytes) -> Path:
     directory = adequacy_dir(project_id, control_id)
     dest = directory / f"{uuid.uuid4().hex}_{_safe_filename(original_name)}"

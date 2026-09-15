@@ -8,7 +8,10 @@ export interface ChatInputHandle {
 interface ChatInputProps {
   onSend: (message: string) => void;
   onFileSelect?: (file: File) => void;
-  onFolderSelect?: (files: FileList) => void;
+  /** SOPs/workpapers folder — routes to Step 2 (adequacy). */
+  onAdequacyFolderSelect?: (files: FileList) => void;
+  /** Evidence folder — routes to Step 3 (evidence). */
+  onEvidenceFolderSelect?: (files: FileList) => void;
   disabled?: boolean;
   placeholder?: string;
   /** Accept string for the single-file picker (varies by phase). */
@@ -17,18 +20,25 @@ interface ChatInputProps {
 }
 
 /**
- * The attach button opens a small menu with both options rather than
+ * The attach button opens a small menu with explicit options rather than
  * guessing from the active phase — a user may legitimately want to re-upload
  * an RCM while sitting on Phase 3, and phase-guessing made that impossible.
+ * The same reasoning applies to folders: the SOP/workpaper folder and the
+ * evidence folder are both "one subfolder per Control ID" and otherwise
+ * indistinguishable, so which one an attached folder is must come from an
+ * explicit menu choice, never inferred from whichever step tab happens to be
+ * open — that previously misrouted evidence uploads into the adequacy
+ * assessment whenever the user hadn't yet clicked into Step 3.
  */
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-  { onSend, onFileSelect, onFolderSelect, disabled, placeholder, acceptFile, showUpload },
+  { onSend, onFileSelect, onAdequacyFolderSelect, onEvidenceFolderSelect, disabled, placeholder, acceptFile, showUpload },
   ref,
 ) {
   const [text, setText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
+  const adequacyFolderRef = useRef<HTMLInputElement>(null);
+  const evidenceFolderRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({ setText: (value: string) => setText(value) }));
@@ -75,13 +85,25 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
             }}
           />
           <input
-            ref={folderRef}
+            ref={adequacyFolderRef}
             type="file"
             multiple
             {...{ webkitdirectory: "", directory: "" }}
             style={{ display: "none" }}
             onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) onFolderSelect?.(e.target.files);
+              if (e.target.files && e.target.files.length > 0) onAdequacyFolderSelect?.(e.target.files);
+              e.target.value = "";
+              setMenuOpen(false);
+            }}
+          />
+          <input
+            ref={evidenceFolderRef}
+            type="file"
+            multiple
+            {...{ webkitdirectory: "", directory: "" }}
+            style={{ display: "none" }}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) onEvidenceFolderSelect?.(e.target.files);
               e.target.value = "";
               setMenuOpen(false);
             }}
@@ -108,11 +130,18 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput
                   <em>RCM, an SOP or workpaper, or an edited workbook</em>
                 </span>
               </button>
-              <button type="button" role="menuitem" onClick={() => folderRef.current?.click()}>
+              <button type="button" role="menuitem" onClick={() => adequacyFolderRef.current?.click()}>
                 <FolderUp size={15} />
                 <span>
-                  <strong>Attach folder</strong>
-                  <em>SOPs/workpapers or evidence — one subfolder per Control ID</em>
+                  <strong>Attach SOP/workpaper folder</strong>
+                  <em>Step 2 — one subfolder per Control ID</em>
+                </span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => evidenceFolderRef.current?.click()}>
+                <FolderUp size={15} />
+                <span>
+                  <strong>Attach evidence folder</strong>
+                  <em>Step 3 — one subfolder per Control ID</em>
                 </span>
               </button>
             </div>

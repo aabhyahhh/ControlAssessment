@@ -64,6 +64,7 @@ export default function ControlCoverageBars({ rows, severityByControl, onSelectC
                 items: [
                   `${r.declared_not_uploaded} declared, not uploaded`,
                   `${r.missing} missing`,
+                  "Click to jump to the control's declared-evidence list below",
                 ],
               });
             }}

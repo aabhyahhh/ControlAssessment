@@ -382,6 +382,32 @@ def find_coverage_gaps(controls: list[dict[str, Any]], sop_steps: list[dict[str,
     return gaps
 
 
+def build_control_sop_gaps(reconciliation: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Control-centric re-pivot of `reconciliation`: for each control, which
+    of its own RCM fields the SOP/workpapers contradict or never mention.
+    Answers "what is THIS control missing from the SOP" — a different
+    question from `coverage_gaps` ("which SOP steps map to no control at
+    all"), so this is additive, not a replacement. Pure re-pivot of
+    already-computed data — no new LLM call."""
+    rows: list[dict[str, Any]] = []
+    for r in reconciliation:
+        gaps = []
+        for field, cell in (r.get("fields") or {}).items():
+            status = cell.get("status", "absent")
+            if status in ("contradicted", "absent"):
+                gaps.append({
+                    "field": field,
+                    "status": "contradicted" if status == "contradicted" else "undocumented",
+                    "rcm_value": cell.get("rcm_value", ""),
+                    "doc_value": cell.get("doc_value", ""),
+                })
+        field_order = {f: i for i, f in enumerate(RECONCILE_FIELDS)}
+        gaps.sort(key=lambda g: field_order.get(g["field"], len(field_order)))
+        rows.append({"control_id": r["control_id"], "gaps": gaps, "gap_count": len(gaps)})
+    rows.sort(key=lambda x: -x["gap_count"])
+    return rows
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  6. Deficiency classification
 # ═══════════════════════════════════════════════════════════════════════════
@@ -496,6 +522,69 @@ def build_design_profile(deficiencies: list[dict[str, Any]]) -> dict[str, Any]:
         "total_controls": total,
         "assessed": any_assessed,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  6b. Justification-email response analysis — does the owner's reply
+#      resolve a reconciliation contradiction?
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def analyze_justification_response(
+    control_id: str,
+    field: str | None,
+    mismatch_description: str,
+    rcm_value: str,
+    doc_value: str,
+    response_text: str,
+) -> dict[str, Any]:
+    """One LLM call: does the control owner's reply justify/resolve this
+    specific RCM<->documentation contradiction? Never fabricates a verdict
+    without a real LLM assessment — same guard pattern as every other
+    judgment call in this engine."""
+    client, model = _get_llm_client()
+    if client is None or not response_text.strip():
+        return {"verdict": None, "reasoning": "Not analyzed — no LLM available or an empty response."}
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an audit control-documentation assistant. A control's RCM value for one "
+                        "field was contradicted by its SOP/workpaper documentation. The control owner was "
+                        "asked to justify the discrepancy and replied. Decide whether the reply resolves the "
+                        "contradiction:\n"
+                        "  'justified' — the reply credibly explains or corrects the discrepancy;\n"
+                        "  'partially_justified' — the reply addresses it but leaves something unresolved;\n"
+                        "  'not_justified' — the reply doesn't address the discrepancy or doesn't resolve it.\n"
+                        'Return ONLY JSON: {"verdict": "justified|partially_justified|not_justified", '
+                        '"reasoning": "one or two sentences"}'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"CONTROL ID: {control_id}\nFIELD: {field or '(control-level)'}\n"
+                        f"MISMATCH: {mismatch_description}\n"
+                        f"RCM VALUE: {rcm_value or '(blank)'}\nDOCUMENT VALUE: {doc_value or '(not stated)'}\n\n"
+                        f"OWNER'S REPLY:\n{response_text[:6000]}"
+                    ),
+                },
+            ],
+            max_completion_tokens=800,
+            response_format={"type": "json_object"},
+        )
+        parsed = parse_json_response(resp, caller="sop_adequacy_engine.analyze_justification_response")
+        verdict = parsed.get("verdict")
+        if verdict not in ("justified", "partially_justified", "not_justified"):
+            verdict = None
+        return {"verdict": verdict, "reasoning": str(parsed.get("reasoning") or "").strip()}
+    except Exception as e:
+        logger.warning("Justification response analysis failed for %s/%s: %s", control_id, field, e)
+        return {"verdict": None, "reasoning": "Analysis failed — see server logs."}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -780,6 +869,7 @@ def run_sop_adequacy_assessment(
         "reconciliation": reconciliation,
         "control_alignment": control_alignment,
         "coverage_gaps": coverage_gaps,
+        "control_sop_gaps": build_control_sop_gaps(reconciliation),
         "deficiencies": deficiencies,
         "workpaper_coverage": workpaper_coverage,
         "counts": counts,
