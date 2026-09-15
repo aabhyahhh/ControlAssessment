@@ -186,6 +186,20 @@ export interface AdequacyUploadResult {
   unmatched_control_ids: string[];
 }
 
+export interface ReconciliationFieldCounts {
+  field: string;
+  supported: number;
+  contradicted: number;
+  undocumented: number;
+  undetermined: number;
+  control_ids: {
+    supported: string[];
+    contradicted: string[];
+    undocumented: string[];
+    undetermined: string[];
+  };
+}
+
 export interface ReconciliationSummaryAnalytics {
   cell_counts: { supported: number; contradicted: number; undocumented: number; undetermined: number };
   pct_supported: number | null;
@@ -194,6 +208,9 @@ export interface ReconciliationSummaryAnalytics {
   pct_undetermined: number | null;
   most_contradicted_fields: { field: string; control_count: number }[];
   controls_by_exception_count: { control_id: string; contradicted: number; undetermined: number }[];
+  /** Same four buckets as `cell_counts`, broken out per RCM field — the
+   *  source for the "what the documents establish" bar chart. */
+  by_field: ReconciliationFieldCounts[];
 }
 
 export interface WorkpaperCoverageAnalytics {

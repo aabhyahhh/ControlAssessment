@@ -513,26 +513,50 @@ def build_reconciliation_summary(reconciliation: list[dict[str, Any]]) -> dict[s
     counts = {"supported": 0, "contradicted": 0, "undocumented": 0, "undetermined": 0}
     contradictions_by_field: dict[str, list[str]] = {}
     exceptions_by_control: dict[str, dict[str, int]] = {}
+    # Per-field breakdown: same four buckets as the portfolio totals above,
+    # but kept separately for each RCM field so the UI can render one bar per
+    # field ("what the documents establish") instead of only a portfolio-wide
+    # rollup. Field keys come entirely from whatever the reconciliation rows
+    # actually carry — never a hardcoded field list.
+    by_field: dict[str, dict[str, Any]] = {}
+
+    def _field_bucket(field: str) -> dict[str, Any]:
+        return by_field.setdefault(
+            field,
+            {
+                "supported": 0, "contradicted": 0, "undocumented": 0, "undetermined": 0,
+                "control_ids": {"supported": [], "contradicted": [], "undocumented": [], "undetermined": []},
+            },
+        )
 
     for r in reconciliation:
         cid = r["control_id"]
         for field, cell in (r.get("fields") or {}).items():
             status = cell.get("status", "absent")
+            bucket = _field_bucket(field)
             if status == "undetermined":
                 counts["undetermined"] += 1
+                bucket["undetermined"] += 1
+                bucket["control_ids"]["undetermined"].append(cid)
             elif status == "contradicted":
                 counts["contradicted"] += 1
                 contradictions_by_field.setdefault(field, []).append(cid)
                 exceptions_by_control.setdefault(cid, {"contradicted": 0, "undetermined": 0})
                 exceptions_by_control[cid]["contradicted"] += 1
+                bucket["contradicted"] += 1
+                bucket["control_ids"]["contradicted"].append(cid)
             elif status == "absent":
                 # Whether the RCM field itself was blank or populated, the
                 # documents didn't address it either way — undocumented
                 # scope, not a disagreement to bucket as "supported" or
                 # count against the reconciled percentage.
                 counts["undocumented"] += 1
+                bucket["undocumented"] += 1
+                bucket["control_ids"]["undocumented"].append(cid)
             else:  # supported
                 counts["supported"] += 1
+                bucket["supported"] += 1
+                bucket["control_ids"]["supported"].append(cid)
 
         undetermined_here = sum(
             1 for cell in (r.get("fields") or {}).values() if cell.get("status") == "undetermined"
@@ -560,6 +584,23 @@ def build_reconciliation_summary(reconciliation: list[dict[str, Any]]) -> dict[s
         key=lambda x: (-x["contradicted"], -x["undetermined"]),
     )
 
+    # Field order follows RECONCILE_FIELDS (the order the engine itself
+    # walks fields in) for any field that appears there, then any other
+    # field the documents happened to address, appended after — so the row
+    # order is stable across runs without hardcoding which fields exist.
+    field_order = {f: i for i, f in enumerate(RECONCILE_FIELDS)}
+    by_field_list = [
+        {
+            "field": field,
+            "supported": b["supported"],
+            "contradicted": b["contradicted"],
+            "undocumented": b["undocumented"],
+            "undetermined": b["undetermined"],
+            "control_ids": b["control_ids"],
+        }
+        for field, b in sorted(by_field.items(), key=lambda kv: field_order.get(kv[0], len(field_order)))
+    ]
+
     return {
         "cell_counts": counts,
         "pct_supported": pct("supported"),
@@ -568,6 +609,7 @@ def build_reconciliation_summary(reconciliation: list[dict[str, Any]]) -> dict[s
         "pct_undetermined": pct("undetermined"),
         "most_contradicted_fields": most_contradicted_fields,
         "controls_by_exception_count": controls_by_exception_count,
+        "by_field": by_field_list,
     }
 
 
@@ -641,7 +683,7 @@ def run_sop_adequacy_assessment(
     workpaper_months_by_control: dict[str, list[str]],
     audit_period_start: date,
     audit_period_end: date,
-    on_progress: Callable[[str, int, int], None] | None = None,
+    on_progress: Callable[[str, int, int, str | None], None] | None = None,
 ) -> dict[str, Any]:
     """`project_sop_text` is any SOP uploaded without a control_id (whole
     process). `docs_text_by_control` is the concatenated text of every
@@ -664,7 +706,25 @@ def run_sop_adequacy_assessment(
     reconciliation: list[dict[str, Any]] = []
     control_alignment: list[dict[str, Any]] = []
     done = 0
+
+    def _report(cid: str, activity: str) -> None:
+        if not on_progress:
+            return
+        try:
+            on_progress(cid, done, total * 2, activity)
+        except Exception:
+            logger.debug("adequacy progress callback failed", exc_info=True)
+
     with ThreadPoolExecutor(max_workers=8) as pool:
+        # Reconciliation and design-alignment calls for every control are
+        # submitted together and run concurrently on the same worker pool —
+        # they are not two sequential phases, so the activity label says
+        # "and" rather than implying reconciliation finishes before
+        # alignment starts. Announced before any result lands: with an LLM
+        # in the loop the first completion can be tens of seconds away, and
+        # a bar with no update at all reads as hung, not busy.
+        if controls:
+            _report(controls[0]["control_id"], "Reconciling against SOPs and checking design alignment")
         recon_futs = {
             pool.submit(_reconcile_control, c, *doc_text_for[c["control_id"]]): c["control_id"]
             for c in controls
@@ -680,11 +740,7 @@ def run_sop_adequacy_assessment(
             except Exception as e:
                 logger.warning("Reconciliation task raised for %s: %s", cid, e)
             done += 1
-            if on_progress:
-                try:
-                    on_progress(cid, done, total * 2)
-                except Exception:
-                    logger.debug("adequacy progress callback failed", exc_info=True)
+            _report(cid, "Reconciled against SOPs and workpapers")
         for future in as_completed(list(align_futs)):
             cid = align_futs[future]
             try:
@@ -693,11 +749,7 @@ def run_sop_adequacy_assessment(
                 logger.warning("Alignment task raised for %s: %s", cid, e)
                 control_alignment.append({"control_id": cid, "alignment": "not_assessed", "mismatches": []})
             done += 1
-            if on_progress:
-                try:
-                    on_progress(cid, done, total * 2)
-                except Exception:
-                    logger.debug("adequacy progress callback failed", exc_info=True)
+            _report(cid, "Checked design alignment")
 
     order = {c["control_id"]: i for i, c in enumerate(controls)}
     reconciliation.sort(key=lambda r: order.get(r["control_id"], 0))

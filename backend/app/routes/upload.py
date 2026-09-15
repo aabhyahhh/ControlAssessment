@@ -4,11 +4,13 @@ import re
 import uuid
 from datetime import date
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 
 from app.database import get_conn
+from app.engines import progress
 from app.engines.evidence_router import SAMPLE_FILENAME_RE, detect_control_test_mode, is_junk_path
 from app.engines.rcm_normalizer import normalize_rcm_file
 from app.engines.rcm_overlay import load_effective_controls
@@ -457,11 +459,16 @@ def _mark_step2_pending(cur, project_id: str) -> None:
 def _persist_adequacy_doc(
     cur, project_id: str, control_id: str | None, doc_kind: str,
     period_month: date | None, dest_path: Path, original_name: str, content_len: int,
+    on_progress: Callable[[str], None] | None = None,
 ) -> tuple[str, int]:
+    if on_progress:
+        on_progress(f"Extracting text from {original_name}")
     try:
         extracted_text = extract_text(dest_path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Could not extract text from '{original_name}': {e}")
+    if doc_kind == "sop" and extracted_text.strip() and on_progress:
+        on_progress(f"Parsing SOP steps in {original_name}")
     parsed_steps = parse_sop_steps(extracted_text) if doc_kind == "sop" and extracted_text.strip() else []
     doc_id = str(uuid.uuid4())
     cur.execute(
@@ -566,66 +573,88 @@ async def upload_adequacy_folder(
     summaries: list[AdequacyDocSummary] = []
     unmatched: set[str] = set()
     total_saved = 0
+    # Every file in the batch is a candidate; skipped ones (junk paths,
+    # unmatched folders, wrong suffix) still advance the counter so the bar
+    # reaches 100% instead of stalling short of `total`.
+    total_candidates = len(files)
+    files_seen = 0
 
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # Replace the whole adequacy set — latest upload wins.
-            cur.execute("DELETE FROM adequacy_documents WHERE project_id = %s", (project_id,))
-            clear_adequacy_root(project_id)
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                # Replace the whole adequacy set — latest upload wins.
+                cur.execute("DELETE FROM adequacy_documents WHERE project_id = %s", (project_id,))
+                clear_adequacy_root(project_id)
+                progress.set_progress(
+                    project_id, progress.UPLOAD, 0, total_candidates, activity="Starting upload"
+                )
 
-            for upload_file, rel_path, parts in zip(files, relative_paths, parsed_paths):
-                if not parts or is_junk_path(parts):
-                    continue
-                remainder = parts[1:]
-                if not remainder:
-                    continue
-
-                content = await upload_file.read()
-                if len(content) > _MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail=f"File '{rel_path}' exceeds the 100MB upload limit.")
-
-                original_name = remainder[-1]
-                try:
-                    _adequacy_suffix_ok(original_name)
-                except HTTPException:
-                    continue  # skip stray non-document files quietly
-
-                if len(remainder) == 1:
-                    # File directly under the root -> whole-process SOP.
-                    matched_control_id, kind = None, _classify_adequacy_doc(original_name)
-                    if kind != "sop":
-                        kind = "sop"
-                else:
-                    control_segment = remainder[0]
-                    matched_control_id = control_id_lookup.get(_normalize_path_segment(control_segment).lower())
-                    if matched_control_id is None:
-                        unmatched.add(control_segment)
+                for upload_file, rel_path, parts in zip(files, relative_paths, parsed_paths):
+                    if not parts or is_junk_path(parts):
+                        files_seen += 1
                         continue
-                    kind = _classify_adequacy_doc(original_name)
+                    remainder = parts[1:]
+                    if not remainder:
+                        files_seen += 1
+                        continue
 
-                period_month = _month_from_filename(original_name) if kind == "workpaper" else None
-                dest_path = save_adequacy_file(project_id, matched_control_id, original_name, content)
-                _, step_count = _persist_adequacy_doc(
-                    cur, project_id, matched_control_id, kind, period_month, dest_path, original_name, len(content)
-                )
-                total_saved += 1
-                summaries.append(AdequacyDocSummary(
-                    control_id=matched_control_id, doc_kind=kind, filename=original_name,
-                    period_month=period_month.strftime("%Y-%m") if period_month else None,
-                    parsed_step_count=step_count,
-                ))
+                    content = await upload_file.read()
+                    if len(content) > _MAX_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail=f"File '{rel_path}' exceeds the 100MB upload limit.")
 
-            if total_saved == 0:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        "No usable SOP or workpaper files were found in the upload"
-                        + (f" (unmatched folder names: {sorted(unmatched)})" if unmatched else "")
-                        + "."
-                    ),
-                )
-            _mark_step2_pending(cur, project_id)
-        conn.commit()
+                    original_name = remainder[-1]
+                    try:
+                        _adequacy_suffix_ok(original_name)
+                    except HTTPException:
+                        files_seen += 1
+                        continue  # skip stray non-document files quietly
+
+                    if len(remainder) == 1:
+                        # File directly under the root -> whole-process SOP.
+                        matched_control_id, kind = None, _classify_adequacy_doc(original_name)
+                        if kind != "sop":
+                            kind = "sop"
+                    else:
+                        control_segment = remainder[0]
+                        matched_control_id = control_id_lookup.get(_normalize_path_segment(control_segment).lower())
+                        if matched_control_id is None:
+                            unmatched.add(control_segment)
+                            files_seen += 1
+                            continue
+                        kind = _classify_adequacy_doc(original_name)
+
+                    period_month = _month_from_filename(original_name) if kind == "workpaper" else None
+                    dest_path = save_adequacy_file(project_id, matched_control_id, original_name, content)
+                    _, step_count = _persist_adequacy_doc(
+                        cur, project_id, matched_control_id, kind, period_month, dest_path, original_name, len(content),
+                        on_progress=lambda activity, _name=original_name: progress.set_progress(
+                            project_id, progress.UPLOAD, files_seen, total_candidates, _name, activity
+                        ),
+                    )
+                    total_saved += 1
+                    files_seen += 1
+                    progress.set_progress(
+                        project_id, progress.UPLOAD, files_seen, total_candidates, original_name, f"Saved {original_name}"
+                    )
+                    summaries.append(AdequacyDocSummary(
+                        control_id=matched_control_id, doc_kind=kind, filename=original_name,
+                        period_month=period_month.strftime("%Y-%m") if period_month else None,
+                        parsed_step_count=step_count,
+                    ))
+
+                if total_saved == 0:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "No usable SOP or workpaper files were found in the upload"
+                            + (f" (unmatched folder names: {sorted(unmatched)})" if unmatched else "")
+                            + "."
+                        ),
+                    )
+                _mark_step2_pending(cur, project_id)
+            conn.commit()
+    finally:
+        progress.clear_progress(project_id, progress.UPLOAD)
 
     return AdequacyUploadResponse(
         documents=summaries, total_files_saved=total_saved, unmatched_control_ids=sorted(unmatched),

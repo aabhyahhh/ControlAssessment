@@ -3,11 +3,14 @@ import MetricCard from "../MetricCard";
 import StatusBadge from "../StatusBadge";
 import DistributionBar, { type DistributionSegment } from "../DistributionBar";
 import EscalationFunnel from "../EscalationFunnel";
+import StepFooterNote from "../StepFooterNote";
 import TypedSummary from "../TypedSummary";
 import type { GapAssessmentRow, GapAreaConcentration, Phase4Result, Severity } from "../../types";
 
 interface GapAssessmentPaneProps {
   result: Phase4Result;
+  onDownload?: () => void;
+  downloadBusy?: boolean;
 }
 
 const SEVERITY_ORDER: (Severity | "none")[] = ["critical", "high", "medium", "low", "none"];
@@ -80,6 +83,21 @@ function GapCard({ row }: { row: GapAssessmentRow }) {
   );
 }
 
+/** One-line procedural advice per gap-area category — static guidance, not a
+ *  data claim, so it's safe to hardcode. Keyed off the same category label
+ *  text the engine emits (`gap_assessment_engine._GAP_AREA_CATEGORIES`);
+ *  a category the engine adds later without a matching hint here just
+ *  renders with no second line, never a wrong or invented one. */
+const GAP_AREA_HINTS: Record<string, string> = {
+  "Evidence documents missing": "Chase the outstanding files before closing this control.",
+  "RCM fields blank": "Reconcile the blank fields against the SOP before any design conclusion.",
+  "SOP contradicts the RCM": "Resolve the contradiction with the process owner before any design conclusion.",
+  "SOP only partially supports the RCM": "Some fields are unconfirmed by the documentation — follow up before concluding.",
+  "Control not described in the SOP/workpapers": "Request the procedure document before any design conclusion.",
+  "Low reconciliation to the documentation": "Less than half the RCM fields are corroborated by the documents.",
+  "Workpaper months missing": "Design is fine; the period is not fully covered.",
+};
+
 function GapAreaBar({
   concentration,
   activeArea,
@@ -104,14 +122,66 @@ function GapAreaBar({
             aria-pressed={isActive}
             onClick={() => onSelectArea(isActive ? null : c.area)}
           >
-            <span className="gap-area-label">{c.area}</span>
+            <div className="gap-area-row-head">
+              <span className="gap-area-label">{c.area}</span>
+              <span className="gap-area-count">{c.control_count}</span>
+            </div>
             <span className="gap-area-track">
               <span className="gap-area-fill" style={{ width: `${(c.control_count / max) * 100}%` }} />
             </span>
-            <span className="gap-area-count">{c.control_count}</span>
+            {GAP_AREA_HINTS[c.area] && <span className="gap-area-hint">{GAP_AREA_HINTS[c.area]}</span>}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** Big "X / Y controls clear of gaps" banner with a plain progress bar and a
+ *  sentence spelling out what's blocking vs what can travel with the
+ *  report. All three numbers come straight from `stats`/`severity_rollup` —
+ *  no new computation, just composed differently from the metric cards
+ *  above. */
+function ReadinessBanner({
+  stats,
+  rollup,
+  onDownload,
+  downloadBusy,
+}: {
+  stats: NonNullable<Phase4Result["stats"]>;
+  rollup: Record<string, number>;
+  onDownload?: () => void;
+  downloadBusy?: boolean;
+}) {
+  const total = stats.controls_assessed;
+  const clear = stats.fully_covered;
+  const pct = total > 0 ? Math.round((clear / total) * 100) : 0;
+  const followUp = (rollup.medium ?? 0) + (rollup.low ?? 0);
+
+  return (
+    <div className="readiness-banner">
+      <span className="readiness-banner-eyebrow">Readiness to Conclude</span>
+      <div className="readiness-banner-fraction">
+        {clear} <span className="readiness-banner-slash">/</span> {total}
+        <span className="readiness-banner-fraction-label">controls clear of gaps</span>
+      </div>
+      <div className="readiness-banner-track" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="readiness-banner-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="readiness-banner-copy">
+        {clear} of {total} control{total === 1 ? "" : "s"} carr{total === 1 ? "ies" : "y"} no gap.
+        {stats.serious > 0
+          ? ` ${stats.serious} sit${stats.serious === 1 ? "s" : ""} at critical or high and must be resolved before the assessment concludes` +
+            (followUp > 0 ? `; the remainder are documentation follow-ups that can travel with the report.` : ".")
+          : followUp > 0
+            ? ` The remaining ${followUp} carry only documentation follow-ups that can travel with the report.`
+            : ""}
+      </p>
+      {onDownload && (
+        <button type="button" className="kpmg-btn primary readiness-banner-download" disabled={downloadBusy} onClick={onDownload}>
+          {downloadBusy ? "Preparing…" : "Download gap assessment (.xlsx)"}
+        </button>
+      )}
     </div>
   );
 }
@@ -156,7 +226,7 @@ function gapSummary(result: Phase4Result): string[] {
   return paras;
 }
 
-export default function GapAssessmentPane({ result }: GapAssessmentPaneProps) {
+export default function GapAssessmentPane({ result, onDownload, downloadBusy }: GapAssessmentPaneProps) {
   const rows = result.rows ?? [];
   const stats = result.stats;
   const rollup = stats?.severity_rollup;
@@ -183,13 +253,17 @@ export default function GapAssessmentPane({ result }: GapAssessmentPaneProps) {
 
   const severitySegments: DistributionSegment[] = useMemo(
     () =>
-      SEVERITY_ORDER.map((s) => ({
-        key: s,
-        label: s === "none" ? "No gap" : `${s[0].toUpperCase()}${s.slice(1)}`,
-        count: rollup?.[s] ?? 0,
-        color: SEVERITY_FILL[s],
-        detail: (grouped.get(s) ?? []).slice(0, 6).map((r) => r.control_id),
-      })),
+      SEVERITY_ORDER.map((s) => {
+        const ids = (grouped.get(s) ?? []).map((r) => r.control_id);
+        return {
+          key: s,
+          label: s === "none" ? "No Gap" : `${s[0].toUpperCase()}${s.slice(1)}`,
+          count: rollup?.[s] ?? 0,
+          color: SEVERITY_FILL[s],
+          detail: ids.slice(0, 6),
+          idsPreview: ids,
+        };
+      }),
     [rollup, grouped],
   );
 
@@ -206,16 +280,27 @@ export default function GapAssessmentPane({ result }: GapAssessmentPaneProps) {
       )}
 
       <div className="pane-subsection">
-        <h4>Control Population Outcome</h4>
         <TypedSummary paragraphs={gapSummary(result)} />
       </div>
 
+      {analytics && analytics.gap_area_concentration.length > 0 && (
+        <div className="pane-subsection">
+          <h4>Where The Gap Actually Lies</h4>
+          <p className="pane-subsection-note">
+            Each control is attributed to the earliest break in the chain, so this reads as a work queue rather
+            than a score. Click a row to filter the controls below to that gap area.
+          </p>
+          <GapAreaBar
+            concentration={analytics.gap_area_concentration}
+            activeArea={activeArea}
+            onSelectArea={setActiveArea}
+          />
+        </div>
+      )}
+
       {rollup && (
         <div className="pane-subsection">
-          <h4>Gap Severity Distribution</h4>
-          <p className="pane-subsection-note">
-            The resulting assessment population by severity. Click a segment to filter the controls below.
-          </p>
+          <h4>Severity Spread</h4>
           <DistributionBar
             segments={severitySegments}
             activeKey={activeSeverity}
@@ -224,32 +309,9 @@ export default function GapAssessmentPane({ result }: GapAssessmentPaneProps) {
         </div>
       )}
 
-      {analytics && analytics.coverage_funnel.length > 0 && (
+      {stats && rollup && (
         <div className="pane-subsection">
-          <EscalationFunnel
-            title="Control Population Coverage"
-            total={analytics.coverage_funnel[0]?.count ?? 0}
-            caption="Each stage is the count of controls that pass this gate AND every gate before it — a genuine narrowing of the same population, not independent totals."
-            stages={analytics.coverage_funnel.map((s) => ({
-              label: s.stage,
-              count: s.count,
-              unassessed: s.unassessed,
-            }))}
-          />
-        </div>
-      )}
-
-      {analytics && analytics.gap_area_concentration.length > 0 && (
-        <div className="pane-subsection">
-          <h4>Where The Gaps Are</h4>
-          <p className="pane-subsection-note">
-            How many controls carry each kind of gap. Click a row to filter the controls below to that gap area.
-          </p>
-          <GapAreaBar
-            concentration={analytics.gap_area_concentration}
-            activeArea={activeArea}
-            onSelectArea={setActiveArea}
-          />
+          <ReadinessBanner stats={stats} rollup={rollup} onDownload={onDownload} downloadBusy={downloadBusy} />
         </div>
       )}
 
@@ -292,9 +354,25 @@ export default function GapAssessmentPane({ result }: GapAssessmentPaneProps) {
         );
       })}
 
-      <p className="pane-subsection-note" style={{ marginTop: 12 }}>
-        Download the Excel summary above for the full gap assessment against the RCM, SOPs and evidence.
-      </p>
+      {analytics && analytics.coverage_funnel.length > 0 && (
+        <details className="pane-disclosure">
+          <summary>View control population coverage funnel</summary>
+          <div className="pane-subsection" style={{ marginTop: 12 }}>
+            <EscalationFunnel
+              title="Control Population Coverage"
+              total={analytics.coverage_funnel[0]?.count ?? 0}
+              caption="Each stage is the count of controls that pass this gate AND every gate before it — a genuine narrowing of the same population, not independent totals."
+              stages={analytics.coverage_funnel.map((s) => ({
+                label: s.stage,
+                count: s.count,
+                unassessed: s.unassessed,
+              }))}
+            />
+          </div>
+        </details>
+      )}
+
+      <StepFooterNote text="Every figure derives from project state at render time — control count, period length and document counts drive the geometry. Nothing is fixed in the markup." />
     </div>
   );
 }

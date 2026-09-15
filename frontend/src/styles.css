@@ -1495,77 +1495,75 @@ button {
   margin-top: 2px;
 }
 
-/* ---------- Field completeness bar (Step 1) ---------- */
+/* ---------- Field completeness matrix (Step 1) ---------- */
 
-.field-completeness-bar {
+.fc-matrix {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 4px;
 }
 
-.fc-bar-row {
+.fc-matrix-row {
   display: grid;
-  grid-template-columns: 150px 1fr 56px;
+  grid-template-columns: 100px 1fr 52px;
   align-items: center;
   gap: 12px;
+  transition: opacity 160ms var(--ease-out-soft);
+}
+
+.fc-matrix-row.dimmed {
+  opacity: 0.4;
+}
+
+.fc-matrix-row-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
   background: none;
   border: none;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
   text-align: left;
-  font: inherit;
-  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
-}
-
-.fc-bar-row:hover {
-  background: var(--pane-card);
-}
-
-.fc-bar-row.active {
-  background: var(--pastel-amber);
-}
-
-.fc-bar-row.dimmed {
-  opacity: 0.45;
-}
-
-.fc-bar-row:disabled {
-  cursor: default;
-}
-
-.fc-bar-row:disabled:hover {
-  background: none;
-}
-
-.fc-bar-label {
-  font-size: 12.5px;
-  color: var(--text);
-  font-weight: 500;
+  padding: 0;
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.fc-bar-track {
-  position: relative;
-  height: 10px;
-  border-radius: 6px;
-  background: var(--track);
+.fc-matrix-row-label:disabled {
+  cursor: default;
+}
+
+.fc-matrix-row-label.active {
+  color: var(--pastel-blue-ink);
+}
+
+.fc-matrix-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  transition: opacity 500ms var(--ease-out-soft);
+}
+
+.fc-matrix-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  flex: 0 0 auto;
+  transition: opacity 400ms var(--ease-out-soft), transform 400ms var(--ease-out-soft);
   cursor: help;
-  overflow: hidden;
 }
 
-.fc-bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: 6px;
-  background: var(--pastel-teal-ink);
-  transition: width 700ms var(--ease-out-soft);
+.fc-matrix-dot.filled {
+  background: var(--pastel-blue-ink);
 }
 
-.fc-bar-count {
+.fc-matrix-dot.blank {
+  background: transparent;
+  border: 1.5px dashed var(--pastel-amber-ink);
+}
+
+.fc-matrix-count {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -1573,7 +1571,10 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fc-bar-fill {
+  .fc-matrix-dots {
+    transition: none;
+  }
+  .fc-matrix-dot {
     transition: none;
   }
 }
@@ -1606,6 +1607,139 @@ button {
   width: 100%;
   max-width: var(--pane-measure, 860px);
   margin-inline: auto;
+}
+
+/* ---------- Step header (eyebrow + title + description + tabs) ---------- */
+
+.step-header {
+  width: 100%;
+  max-width: var(--pane-measure, 860px);
+  margin-inline: auto;
+  margin-bottom: 22px;
+}
+
+.step-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.step-header-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.step-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--pane-line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--pane-card);
+}
+
+.step-header-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--pastel-green-ink);
+}
+
+.step-header-status-dot.working {
+  background: var(--pastel-amber-ink);
+  animation: step-status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes step-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.step-header-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.step-header-description {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  color: var(--muted);
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.step-header-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--pane-line);
+}
+
+.step-header-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 160ms var(--ease-out-soft), border-color 160ms var(--ease-out-soft);
+}
+
+.step-header-tab:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.step-header-tab:not(:disabled):hover {
+  color: var(--text);
+}
+
+.step-header-tab.active {
+  color: var(--pastel-blue-ink);
+  border-bottom-color: var(--pastel-blue-ink);
+}
+
+.step-header-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pane-line);
+}
+
+.step-header-tab.active .step-header-tab-dot {
+  background: var(--pastel-blue-ink);
+}
+
+/* ---------- Step footer note ---------- */
+
+.step-footer-note {
+  width: 100%;
+  max-width: var(--pane-measure, 860px);
+  margin: 28px auto 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--pane-line);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-header-status-dot.working {
+    animation: none;
+  }
 }
 
 .pane-section-header h3 {
@@ -2839,6 +2973,15 @@ button {
   white-space: nowrap;
 }
 
+.phase-progress-activity {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- Phase 4: control verdicts ---------- */
 
 .verdict-list {
@@ -3072,6 +3215,112 @@ button {
   color: var(--pastel-red-ink);
 }
 
+/* ---------- Readiness banner (Step 4) ---------- */
+
+.readiness-banner {
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-md);
+  background: var(--pane-card);
+  padding: 20px 22px;
+}
+
+.readiness-banner-eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.readiness-banner-fraction {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.readiness-banner-slash {
+  color: var(--muted);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.readiness-banner-fraction-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.readiness-banner-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.readiness-banner-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--pastel-green-ink);
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.readiness-banner-copy {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.readiness-banner-download {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .readiness-banner-fill {
+    transition: none;
+  }
+}
+
+/* ---------- Disclosure (demoted secondary detail) ---------- */
+
+.pane-disclosure {
+  max-width: var(--pane-measure, 860px);
+  margin: 8px auto 0;
+}
+
+.pane-disclosure > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--pastel-blue-ink);
+  padding: 8px 0;
+  list-style: none;
+}
+
+.pane-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pane-disclosure > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms var(--ease-out-soft);
+}
+
+.pane-disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+
 /* ---------- Escalation funnel ---------- */
 
 .escalation-funnel {
@@ -3164,6 +3413,164 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .funnel-fill {
     animation: none;
+  }
+}
+
+/* ---------- Attrition funnel (Step 3) ---------- */
+
+.attrition-funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 4px;
+}
+
+.attrition-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.attrition-stage-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.attrition-stage-pct {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.attrition-track {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--track);
+}
+
+.attrition-track > .attrition-fill {
+  overflow: hidden;
+}
+
+.attrition-fill-count-outside {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attrition-fill {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--pastel-blue-ink);
+  transition: width 800ms var(--ease-out-soft);
+  padding-left: 10px;
+}
+
+.attrition-fill-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.attrition-delta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--pastel-amber-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attrition-fill {
+    transition: none;
+  }
+}
+
+/* ---------- Control coverage bars (Step 3) ---------- */
+
+.control-coverage-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-coverage-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 44px;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft);
+}
+
+.control-coverage-row:hover {
+  background: var(--pane-card);
+}
+
+.control-coverage-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.control-coverage-track {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.control-coverage-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.control-coverage-fill.matched {
+  background: var(--pastel-teal-ink);
+}
+
+.control-coverage-fill.declared {
+  background: var(--pastel-teal);
+}
+
+.control-coverage-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-coverage-detail {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--pane-line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-coverage-fill {
+    transition: none;
   }
 }
 
@@ -3413,6 +3820,268 @@ button {
   color: var(--pastel-red-ink);
 }
 
+/* ---------- Field support bars (Step 2 — "what the documents establish") ---------- */
+
+.field-support-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-support-row {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+}
+
+.field-support-row:not(:disabled):hover {
+  background: var(--pane-card);
+}
+
+.field-support-row.active {
+  background: var(--pastel-amber);
+}
+
+.field-support-row.dimmed {
+  opacity: 0.4;
+}
+
+.field-support-row:disabled {
+  cursor: default;
+}
+
+.field-support-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.field-support-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field-support-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-support-track {
+  display: flex;
+  height: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--track);
+}
+
+.field-support-segment {
+  display: block;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.field-support-caption {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field-support-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pane-line);
+}
+
+.field-support-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.field-support-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-support-segment {
+    transition: none;
+  }
+}
+
+/* ---------- Workpaper calendar grid (Step 2) ---------- */
+
+.wp-calendar-scroll {
+  overflow-x: auto;
+}
+
+.wp-calendar-grid {
+  display: grid;
+  gap: 4px;
+  align-items: center;
+  min-width: 480px;
+}
+
+.wp-calendar-month-head {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wp-calendar-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.wp-calendar-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  transition: opacity 400ms var(--ease-out-soft), transform 400ms var(--ease-out-soft);
+  cursor: help;
+  justify-self: center;
+  max-width: 20px;
+}
+
+.wp-calendar-cell.present {
+  background: var(--pastel-green-ink);
+}
+
+.wp-calendar-cell.missing {
+  background: transparent;
+  border: 1.5px dashed var(--pastel-amber-ink);
+}
+
+.wp-calendar-delta {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pastel-amber-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wp-calendar-missing-row {
+  display: grid;
+  gap: 4px;
+  align-items: end;
+  height: 34px;
+  margin-top: 10px;
+  min-width: 480px;
+}
+
+.wp-calendar-missing-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  align-self: center;
+}
+
+.wp-calendar-missing-cell-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+}
+
+.wp-calendar-missing-bar {
+  width: 100%;
+  max-width: 20px;
+  min-height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--pastel-amber-ink);
+  transition: height 700ms var(--ease-out-soft);
+  cursor: help;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-calendar-cell,
+  .wp-calendar-missing-bar {
+    transition: none;
+  }
+}
+
+/* ---------- Ranked exception list (Step 2) ---------- */
+
+.ranked-exceptions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ranked-exceptions-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft);
+}
+
+.ranked-exceptions-row:hover {
+  background: var(--pane-card);
+}
+
+.ranked-exceptions-id {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ranked-exceptions-track {
+  display: flex;
+  height: 8px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.ranked-exceptions-fill {
+  display: block;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.ranked-exceptions-fill.contradicted {
+  background: var(--pastel-red-ink);
+}
+
+.ranked-exceptions-fill.undetermined {
+  background: var(--pastel-amber-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ranked-exceptions-fill {
+    transition: none;
+  }
+}
+
 /* ==========================================================================
    Distribution bar (Step 4 severity distribution) — a stacked, clickable bar
    in place of a pie/donut so proportions read accurately and each segment
@@ -3458,21 +4127,24 @@ button {
 
 .distribution-bar-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
 }
 
 .distribution-legend-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 12.5px;
   color: var(--text);
   background: none;
   border: none;
-  padding: 2px 4px;
+  padding: 5px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  width: 100%;
+  text-align: left;
 }
 
 .distribution-legend-item:hover,
@@ -3480,8 +4152,22 @@ button {
   background: var(--pane-card);
 }
 
-.distribution-legend-item strong {
+.distribution-legend-label {
+  flex: 0 0 auto;
+}
+
+.distribution-legend-label strong {
   font-variant-numeric: tabular-nums;
+}
+
+.distribution-legend-ids {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .distribution-legend-swatch {
@@ -3489,6 +4175,7 @@ button {
   height: 10px;
   border-radius: 3px;
   display: inline-block;
+  flex: 0 0 auto;
 }
 
 /* ---------- Gap-area concentration (Step 4) ---------- */
@@ -3496,17 +4183,15 @@ button {
 .gap-area-bars {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .gap-area-row {
-  display: grid;
-  grid-template-columns: 220px 1fr 40px;
-  align-items: center;
-  gap: 12px;
+  display: block;
+  width: 100%;
   background: none;
   border: none;
-  padding: 4px 6px;
+  padding: 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
@@ -3526,14 +4211,28 @@ button {
   opacity: 0.45;
 }
 
+.gap-area-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
 .gap-area-label {
-  font-size: 12.5px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
 }
 
+.gap-area-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
 .gap-area-track {
-  height: 10px;
-  border-radius: 6px;
+  height: 8px;
+  border-radius: 5px;
   background: var(--track);
   overflow: hidden;
 }
@@ -3541,8 +4240,8 @@ button {
 .gap-area-fill {
   display: block;
   height: 100%;
-  border-radius: 6px;
-  background: var(--pastel-amber-ink);
+  border-radius: 5px;
+  background: var(--pastel-violet-ink);
   transition: width 700ms var(--ease-out-soft);
 }
 
@@ -3552,11 +4251,11 @@ button {
   }
 }
 
-.gap-area-count {
+.gap-area-hint {
+  display: block;
+  margin-top: 6px;
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
   color: var(--muted);
-  text-align: right;
 }
 
 /* ==========================================================================

@@ -3,13 +3,13 @@ import { Plus, Trash2 } from "lucide-react";
 import MetricCard from "../MetricCard";
 import StatusBadge from "../StatusBadge";
 import CollapsibleRow from "../CollapsibleRow";
-import EscalationFunnel from "../EscalationFunnel";
+import AttritionFunnel from "../AttritionFunnel";
+import ControlCoverageBars from "../ControlCoverageBars";
+import StepFooterNote from "../StepFooterNote";
 import TypedSummary from "../TypedSummary";
-import { useHoverCard } from "../HoverCard";
 import type {
   DeclaredEvidence,
   DeclaredEvidenceItem,
-  EvidenceStatusMatrixRow,
   Phase3Analytics,
   Phase3Result,
   Severity,
@@ -111,80 +111,34 @@ function ListEditor({
   );
 }
 
-/** EXPECTED -> DECLARED -> UPLOADED -> COVERED, at the document level across
+/** EXPECTED -> DECLARED -> UPLOADED/MATCHED, at the document level across
  *  the whole portfolio. Every stage is a strict subset of the one before it
- *  (enforced by the engine, not recomputed here), so the narrowing is a real
- *  population funnel, not four independent counts. */
+ *  (enforced by the engine, not recomputed here). Stops at 3 stages: the
+ *  engine's own matching (`_fuzzy_covers`) can match one uploaded file to
+ *  more than one expected document, so "files uploaded" and "documents
+ *  matched" aren't reliably distinct counts — a 4th stage there would risk
+ *  a negative or double-counted delta, so it isn't built. */
 function EvidenceFunnel({ analytics }: { analytics: Phase3Analytics }) {
   if (analytics.expected_total === 0) return null;
+  const declaredGap = analytics.expected_total - analytics.declared_total;
+  const uploadedGap = analytics.declared_total - analytics.uploaded_total;
   return (
-    <EscalationFunnel
-      title="Evidence reconciliation"
+    <AttritionFunnel
       total={analytics.expected_total}
-      caption="Every expected evidence document, tracked through to whether a file actually exists for it."
       stages={[
-        { label: "Expected", count: analytics.expected_total },
-        { label: "Declared by user", count: analytics.declared_total },
-        { label: "Uploaded", count: analytics.uploaded_total },
-        { label: "Covered (file matched)", count: analytics.covered_total },
+        { label: "Expected by the engine", count: analytics.expected_total },
+        {
+          label: "Declared by the client",
+          count: analytics.declared_total,
+          deltaNote: declaredGap > 0 ? `−${declaredGap} never named on the evidence list` : undefined,
+        },
+        {
+          label: "Matched to an expected doc",
+          count: analytics.uploaded_total,
+          deltaNote: uploadedGap > 0 ? `−${uploadedGap} named but no file attached` : undefined,
+        },
       ]}
     />
-  );
-}
-
-/** Fixed-column control x evidence-status table. Columns are the engine's
- *  own reconciliation outcome keys (expected / received / declared-not-
- *  uploaded / missing) — never a guessed document-category grid. */
-function StatusMatrix({
-  rows,
-  onSelectControl,
-}: {
-  rows: EvidenceStatusMatrixRow[];
-  onSelectControl: (controlId: string) => void;
-}) {
-  const { show, move, hide, card } = useHoverCard();
-  if (!rows.length) return null;
-
-  return (
-    <div className="data-table-scroll">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Control ID</th>
-            <th>Expected</th>
-            <th>Received</th>
-            <th>Declared, Not Uploaded</th>
-            <th>Missing</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.control_id} onClick={() => onSelectControl(r.control_id)} style={{ cursor: "pointer" }}>
-              <td>{r.control_id}</td>
-              <td>{r.expected}</td>
-              <td style={{ color: r.received > 0 ? "var(--pastel-green-ink)" : undefined }}>{r.received}</td>
-              <td
-                style={{ color: r.declared_not_uploaded > 0 ? "var(--pastel-amber-ink)" : undefined, cursor: "help" }}
-                onMouseEnter={(e) =>
-                  r.declared_not_uploaded > 0 &&
-                  show(e, {
-                    title: r.control_id,
-                    value: `${r.declared_not_uploaded} declared, not uploaded`,
-                    sub: "The user says this evidence exists, but no matching file has been uploaded yet.",
-                  })
-                }
-                onMouseMove={move}
-                onMouseLeave={hide}
-              >
-                {r.declared_not_uploaded}
-              </td>
-              <td style={{ color: r.missing > 0 ? "var(--pastel-red-ink)" : undefined }}>{r.missing}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {card}
-    </div>
   );
 }
 
@@ -245,29 +199,42 @@ export default function EvidencePane({
   const analytics = result?.analytics;
   const [openControl, setOpenControl] = useState<string | null>(null);
 
+  const severityByControl = useMemo(
+    () => new Map(perControl.map((r) => [r.control_id, r.severity])),
+    [perControl],
+  );
+  const neverDeclared = analytics ? analytics.expected_total - analytics.declared_total : 0;
+
   return (
     <div className="pane-section">
       {stats && (
         <div className="metric-card-row stagger">
-          <MetricCard label="Avg Evidence Coverage" value={`${stats.avg_evidence_score}%`} sublabel="Matched vs expected" />
-          <MetricCard label="No Evidence" value={stats.controls_without_evidence} tone="red" />
-          <MetricCard label="Controls With Gaps" value={stats.evidence_gaps_count} tone="amber" />
-          {rollup && (
-            <MetricCard
-              label="Critical / High"
-              value={(rollup.critical ?? 0) + (rollup.high ?? 0)}
-              tone="red"
-            />
-          )}
+          <MetricCard
+            label="Evidence Matched"
+            value={`${stats.avg_evidence_score}%`}
+            sublabel={analytics ? `${analytics.uploaded_total} of ${analytics.expected_total} documents` : undefined}
+          />
+          <MetricCard
+            label="No Evidence At All"
+            value={stats.controls_without_evidence}
+            tone="red"
+            sublabel="Nothing declared or uploaded"
+          />
+          <MetricCard
+            label="Never Declared"
+            value={neverDeclared}
+            tone="amber"
+            sublabel="Expected, not on the list"
+          />
         </div>
       )}
 
       {result && (
         <div className="pane-subsection">
-          <h4>Evidence Coverage</h4>
+          <h4>Evidence Attrition</h4>
           <p className="pane-subsection-note">
-            Expected documents come from the engine's checklist for each control. Declared is what the user says
-            they hold; covered means a file was actually matched to that document.
+            Every expected document followed through the chain. Each drop is a different conversation with the
+            client — the widest one is where to push first.
           </p>
           <TypedSummary paragraphs={evidenceSummary(analytics, controlIds.length)} />
           {analytics && <EvidenceFunnel analytics={analytics} />}
@@ -276,10 +243,14 @@ export default function EvidencePane({
 
       {analytics && analytics.status_matrix.length > 0 && (
         <div className="pane-subsection">
-          <h4>Control × Evidence Status</h4>
-          <p className="pane-subsection-note">Click a row to jump to that control's declared-evidence list below.</p>
-          <StatusMatrix
+          <h4>Coverage By Control</h4>
+          <p className="pane-subsection-note">
+            Sorted by shortfall. Solid is matched to a real file; the pale extension is declared but still
+            unattached. Click a row to jump to that control's declared-evidence list below.
+          </p>
+          <ControlCoverageBars
             rows={analytics.status_matrix}
+            severityByControl={severityByControl}
             onSelectControl={(cid) => setOpenControl(cid)}
           />
         </div>
@@ -380,6 +351,8 @@ export default function EvidencePane({
           </div>
         </div>
       )}
+
+      <StepFooterNote text="Every figure derives from project state at render time — control count, period length and document counts drive the geometry. Nothing is fixed in the markup." />
     </div>
   );
 }

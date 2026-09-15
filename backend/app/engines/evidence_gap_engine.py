@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from typing import Any, Callable
 
 from app.engines.llm_utils import get_llm_client, parse_json_response
 
@@ -65,13 +65,32 @@ def _generate_checklist_for_control(control_description: str, sop_context: str) 
 def generate_required_documents(
     controls: list[dict[str, Any]],
     sop_context_by_control: dict[str, str] | None = None,
+    on_progress: Callable[[str, int, int, str | None], None] | None = None,
 ) -> dict[str, list[str]]:
     """One LLM call per control, parallelized, isolated failures fall back to
     a generic checklist. `sop_context_by_control` (from step 2) sharpens the
-    checklist when a control's RCM description is thin."""
+    checklist when a control's RCM description is thin. `on_progress`, when
+    given, is called as (control_id, done, total, activity) — once before
+    any result lands (so a slow first LLM call doesn't look hung) and once
+    per completed control after — same shape as
+    `sop_adequacy_engine.run_sop_adequacy_assessment`'s callback, so the
+    route can drive the same progress-polling UI."""
     sop_context_by_control = sop_context_by_control or {}
+    total = len(controls)
+    done = 0
     results: dict[str, list[str]] = {}
+
+    def _report(control_id: str, activity: str) -> None:
+        if not on_progress:
+            return
+        try:
+            on_progress(control_id, done, total, activity)
+        except Exception:
+            logger.debug("evidence progress callback failed", exc_info=True)
+
     with ThreadPoolExecutor(max_workers=8) as pool:
+        if controls:
+            _report(controls[0]["control_id"], "Generating the expected-evidence checklist")
         futures = {
             pool.submit(
                 _generate_checklist_for_control,
@@ -87,6 +106,8 @@ def generate_required_documents(
             except Exception as e:
                 logger.warning("Checklist generation raised for %s: %s", control_id, e)
                 results[control_id] = _FALLBACK_CHECKLIST
+            done += 1
+            _report(control_id, "Checklist generated")
     return results
 
 

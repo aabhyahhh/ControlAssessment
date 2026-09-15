@@ -1,19 +1,6 @@
 import BrandLogo from "./BrandLogo";
+import { canNavigateToStep, WORKFLOW_STEPS } from "../workflowSteps";
 import type { ActiveStep, PhaseStatus, WorkflowProgress } from "../types";
-
-interface PhaseDef {
-  step: ActiveStep;
-  key: keyof WorkflowProgress;
-  label: string;
-  sublabel: string;
-}
-
-const PHASES: PhaseDef[] = [
-  { step: 1, key: "phase1", label: "RCM Intake", sublabel: "Control inventory & completeness" },
-  { step: 2, key: "phase2", label: "Adequacy", sublabel: "SOPs, workpapers & reconciliation" },
-  { step: 3, key: "phase3", label: "Evidence", sublabel: "Requirements & intake" },
-  { step: 4, key: "phase4", label: "Gap Assessment", sublabel: "Received vs expected" },
-];
 
 /** Step-progress labels, not analytical results — this tree tracks how far
  *  the WORKFLOW has moved, never what the assessment found. A step showing
@@ -39,14 +26,6 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ projectName, workflowProgress, activeStep, onStepChange }: SidebarProps) {
-  // A phase is reachable once it has its own progress, or once the phase
-  // immediately before it is done — otherwise there'd be no way to reach
-  // an upcoming phase's upload screen after the prior one just finished.
-  const highestDoneStep = PHASES.reduce(
-    (max, p) => (workflowProgress[p.key] === "done" && p.step > max ? p.step : max),
-    0,
-  );
-
   return (
     <aside className="tool-sidebar">
       <div className="tool-sidebar-header">
@@ -65,10 +44,10 @@ export default function Sidebar({ projectName, workflowProgress, activeStep, onS
           WORKFLOW
         </div>
         <div className="workflow-tree">
-          {PHASES.map((phase) => {
+          {WORKFLOW_STEPS.map((phase) => {
             const status = workflowProgress[phase.key];
             const isActive = activeStep === phase.step;
-            const canNavigate = status !== "pending" || phase.step === highestDoneStep + 1;
+            const canNavigate = canNavigateToStep(phase.step, workflowProgress);
             return (
               <button
                 key={phase.key}

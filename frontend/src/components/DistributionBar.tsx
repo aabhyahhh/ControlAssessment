@@ -8,6 +8,11 @@ export interface DistributionSegment {
   color: string;
   /** Extra hover-card lines, e.g. the control IDs in this segment. */
   detail?: string[];
+  /** Control IDs shown inline in the legend row (not just on hover) — a
+   *  reviewer scanning the legend can see exactly which controls sit in a
+   *  segment without hovering the bar. Truncated with "+N" when there are
+   *  more than a few; pass the full list, truncation happens here. */
+  idsPreview?: string[];
 }
 
 interface DistributionBarProps {
@@ -68,17 +73,33 @@ export default function DistributionBar({ segments, activeKey, onSelect }: Distr
           ))}
       </div>
       <div className="distribution-bar-legend">
-        {segments.map((s) => (
-          <button
-            type="button"
-            key={s.key}
-            className={`distribution-legend-item${activeKey === s.key ? " active" : ""}`}
-            onClick={() => onSelect?.(activeKey === s.key ? null : s.key)}
-          >
-            <span className="distribution-legend-swatch" style={{ background: s.color }} />
-            {s.label} <strong>{s.count}</strong>
-          </button>
-        ))}
+        {segments.map((s) => {
+          const ids = s.idsPreview ?? [];
+          const shown = ids.slice(0, 3);
+          const extra = ids.length - shown.length;
+          return (
+            <button
+              type="button"
+              key={s.key}
+              className={`distribution-legend-item${activeKey === s.key ? " active" : ""}`}
+              onClick={() => onSelect?.(activeKey === s.key ? null : s.key)}
+            >
+              <span className="distribution-legend-swatch" style={{ background: s.color }} />
+              <span className="distribution-legend-label">
+                {s.label} <strong>{s.count}</strong>
+              </span>
+              {ids.length > 0 && (
+                <span className="distribution-legend-ids">
+                  {shown.join(" ")}
+                  {extra > 0 && ` +${extra}`}
+                </span>
+              )}
+              {ids.length === 0 && s.idsPreview !== undefined && (
+                <span className="distribution-legend-ids">—</span>
+              )}
+            </button>
+          );
+        })}
       </div>
       {card}
     </div>

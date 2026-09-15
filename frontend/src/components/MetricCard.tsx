@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCountUp } from "../hooks/useCountUp";
 
 interface MetricCardProps {
   label: string;
-  value: string | number;
+  /** `undefined` renders "—" rather than a blank tile — real project state
+   *  can genuinely be missing a figure (e.g. a step not yet run), and that
+   *  must never be silently indistinguishable from a broken render. */
+  value: string | number | undefined;
   /** Accent applied to the value. */
   tone?: "blue" | "green" | "amber" | "red" | "violet" | "teal";
   sublabel?: string;
@@ -16,35 +19,6 @@ const TONES = {
   violet: { ink: "var(--pastel-violet-ink)" },
   teal: { ink: "var(--pastel-teal-ink)" },
 } as const;
-
-/** Counts a numeric value up on mount; passes text values straight through. */
-function useCountUp(value: string | number): string | number {
-  const target = typeof value === "number" ? value : Number(String(value).replace(/[^0-9.]/g, ""));
-  const isNumeric = typeof value === "number" || (!Number.isNaN(target) && /\d/.test(String(value)));
-  const suffix = typeof value === "string" ? String(value).replace(/[0-9.,\s]/g, "") : "";
-  const [shown, setShown] = useState(isNumeric ? 0 : value);
-
-  useEffect(() => {
-    if (!isNumeric) {
-      setShown(value);
-      return;
-    }
-    const start = performance.now();
-    const duration = 700;
-    let frame = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      const current = target * eased;
-      setShown(Number.isInteger(target) ? Math.round(current) : Number(current.toFixed(1)));
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [value, target, isNumeric]);
-
-  return isNumeric ? `${shown}${suffix}` : shown;
-}
 
 export default function MetricCard({ label, value, tone = "blue", sublabel }: MetricCardProps) {
   const { ink } = TONES[tone];

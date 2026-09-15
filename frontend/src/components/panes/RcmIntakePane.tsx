@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import FieldCompletenessBar from "../FieldCompletenessBar";
+import FieldCompletenessMatrix from "../FieldCompletenessMatrix";
+import StepFooterNote from "../StepFooterNote";
 import TypedSummary from "../TypedSummary";
 import MetricCard from "../MetricCard";
 import type { Phase1Result, RcmFieldCompleteness } from "../../types";
@@ -113,15 +114,15 @@ export default function RcmIntakePane({ result }: RcmIntakePaneProps) {
 
       {analyticsFields.length > 0 && (
         <div className="pane-subsection">
-          <h4>RCM Field Completeness</h4>
+          <h4>Field Completeness Map</h4>
           <p className="pane-subsection-note">
-            Only Control ID is required. This shows how many controls carry each recommended field before
-            reconciliation — a blank field is scope for step 2, not a defect. Click a field to see which controls
-            it's blank on.
+            One cell per control, per recommended field. Filled means the RCM carries it; outlined means blank —
+            scope for the step-2 reconciliation, not a defect. Hover any cell for the underlying control; click a
+            row label to filter.
           </p>
-          <FieldCompletenessBar
+          <FieldCompletenessMatrix
             fields={analyticsFields}
-            totalControls={totalControls}
+            controlIds={(rows.length ? rows : missing).map((r) => r.control_id)}
             activeField={activeField}
             onSelectField={setActiveField}
           />
@@ -130,7 +131,7 @@ export default function RcmIntakePane({ result }: RcmIntakePaneProps) {
 
       {missing.length > 0 && (
         <div className="pane-subsection">
-          <h4>Fields To Reconcile In Step 2</h4>
+          <h4>Carried Into Step 2</h4>
           <TypedSummary paragraphs={missingFieldsSummary(missing)} />
           <div className="missing-field-groups">
             {visibleGroups.map((g) => (
@@ -187,6 +188,8 @@ export default function RcmIntakePane({ result }: RcmIntakePaneProps) {
           </table>
         </div>
       </div>
+
+      <StepFooterNote text="Every figure derives from project state at render time — control count, period length and document counts drive the geometry. Nothing is fixed in the markup." />
     </div>
   );
 }

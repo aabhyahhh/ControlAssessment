@@ -29,6 +29,10 @@ export interface StageProgress {
   done: number;
   total: number;
   label: string | null;
+  /** What's actually happening right now — "Extracting text", "Reconciling
+   *  against SOP", "Checklist generated" — so the bar reads as a real
+   *  account of backend work, not just a bare N-of-M count. */
+  activity: string | null;
 }
 
 /** Progress of any long-running step. A stage that is absent means "no

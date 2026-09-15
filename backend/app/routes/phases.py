@@ -208,7 +208,7 @@ def _run_phase2_body(project_id: str, auth: dict) -> PhaseResultResponse:
         docs_text_joined = {cid: "\n\n".join(parts) for cid, parts in docs_text_by_control.items()}
         project_sop_text = "\n\n".join(project_sop_parts)
 
-        progress.set_progress(project_id, progress.ADEQUACY, 0, len(controls) * 2)
+        progress.set_progress(project_id, progress.ADEQUACY, 0, len(controls) * 2, activity="Starting reconciliation")
         try:
             result_payload = run_sop_adequacy_assessment(
                 controls,
@@ -217,8 +217,8 @@ def _run_phase2_body(project_id: str, auth: dict) -> PhaseResultResponse:
                 workpaper_months_by_control,
                 project["audit_period_start"],
                 project["audit_period_end"],
-                on_progress=lambda cid, done, total: progress.set_progress(
-                    project_id, progress.ADEQUACY, done, total, cid
+                on_progress=lambda cid, done, total, activity: progress.set_progress(
+                    project_id, progress.ADEQUACY, done, total, cid, activity
                 ),
             )
         finally:
@@ -297,7 +297,18 @@ def _run_phase3_body(project_id: str, auth: dict) -> PhaseResultResponse:
             for r in (step2.get("reconciliation") or [])
         }
 
-        required_documents = generate_required_documents(controls, recon_text)
+        progress.set_progress(project_id, progress.EVIDENCE, 0, len(controls), activity="Starting checklist generation")
+        try:
+            required_documents = generate_required_documents(
+                controls,
+                recon_text,
+                on_progress=lambda cid, done, total, activity: progress.set_progress(
+                    project_id, progress.EVIDENCE, done, total, cid, activity
+                ),
+            )
+        finally:
+            progress.clear_progress(project_id, progress.EVIDENCE)
+
         result_payload = assess_evidence_gaps(
             controls, required_documents, filenames_by_control, declared_by_control, mode_by_control
         )

@@ -4,21 +4,28 @@ interface PhaseProgressProps {
   /** Items finished so far, and the total. */
   done: number;
   total: number;
-  /** The item that just completed — usually a Control ID. */
+  /** The item that just completed — a Control ID or filename. */
   label?: string | null;
+  /** What's actually happening right now to that item — "Extracting text",
+   *  "Reconciling against SOP", "Waiting for model response" — so the bar
+   *  reads as a real account of backend work, not a bare N-of-M count. */
+  activity?: string | null;
+  /** Unit for the "N of M ___" line — "controls" or "files". */
+  unit?: string;
 }
 
 /**
  * Percentage-of-completion bar for a long-running phase.
  *
- * Shown while adequacy assessment, attribute generation or control testing
- * is in flight — each is several LLM round-trips per control and can run for
- * minutes, which is far too long to show a static "working…".
+ * Shown while document upload/extraction, adequacy assessment, or evidence
+ * checklist generation is in flight — each can involve text extraction
+ * and/or several LLM round-trips per item and run for minutes, which is far
+ * too long to show a static "working…".
  *
  * `total === 0` renders an indeterminate bar rather than a misleading 0%:
  * before the first poll lands we know work is happening but not how much.
  */
-export default function PhaseProgress({ title, done, total, label }: PhaseProgressProps) {
+export default function PhaseProgress({ title, done, total, label, activity, unit = "controls" }: PhaseProgressProps) {
   const known = total > 0;
   const pct = known ? Math.round((done / total) * 100) : 0;
 
@@ -41,15 +48,16 @@ export default function PhaseProgress({ title, done, total, label }: PhaseProgre
           style={known ? { width: `${pct}%` } : undefined}
         />
       </div>
+      {activity && <div className="phase-progress-activity">{activity}…</div>}
       <div className="phase-progress-foot">
         {known ? (
           <span>
-            {done} of {total} controls
+            {done} of {total} {unit}
           </span>
         ) : (
           <span>Starting…</span>
         )}
-        {label && <span className="phase-progress-label">Last completed: {label}</span>}
+        {label && !activity && <span className="phase-progress-label">Last completed: {label}</span>}
       </div>
     </div>
   );

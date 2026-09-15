@@ -5,6 +5,7 @@ import ChatBubble from "../components/ChatBubble";
 import ChatInput, { type ChatInputHandle } from "../components/ChatInput";
 import PhaseProgress from "../components/PhaseProgress";
 import Sidebar from "../components/Sidebar";
+import StepHeader from "../components/StepHeader";
 import TypingIndicator from "../components/TypingIndicator";
 import RcmIntakePane from "../components/panes/RcmIntakePane";
 import AdequacyPane from "../components/panes/AdequacyPane";
@@ -76,8 +77,15 @@ const STEP_TITLES: Record<ActiveStep, string> = {
 };
 
 const STAGE_TITLES: Record<string, string> = {
+  upload: "Processing uploaded documents",
   adequacy: "Reconciling SOPs and workpapers",
-  gap_assessment: "Building the gap assessment",
+  evidence: "Generating the evidence checklist",
+};
+
+/** "N of M ___" unit per stage — upload progress counts files, the others
+ *  count controls. */
+const STAGE_UNITS: Record<string, string> = {
+  upload: "files",
 };
 
 function summarizeCounts(parts: { count: number; text: string }[], fallback: string): string {
@@ -849,9 +857,11 @@ export default function Workspace() {
                 {isStreaming && busyLabel !== null && (
                   <TypingIndicator
                     label={
-                      activeStageEntry && activeStageEntry[1].total > 0
-                        ? `${busyLabel} (${activeStageEntry[1].done}/${activeStageEntry[1].total})`
-                        : busyLabel
+                      activeStageEntry && activeStageEntry[1].activity
+                        ? `${activeStageEntry[1].activity}…`
+                        : activeStageEntry && activeStageEntry[1].total > 0
+                          ? `${busyLabel} (${activeStageEntry[1].done}/${activeStageEntry[1].total})`
+                          : busyLabel
                     }
                   />
                 )}
@@ -904,8 +914,13 @@ export default function Workspace() {
               }
             >
               <div className="data-pane-header">
-                <span className="data-pane-title">{showRepository ? "Reports & Exports" : phaseLabel}</span>
-                <div className="data-pane-header-actions">
+                {/* The step title/description/tabs live in StepHeader below,
+                    inside the scroll area, so they can sit beside the same
+                    content they describe — this bar keeps only the chrome
+                    that isn't step-specific (Repository has no StepHeader,
+                    so it still needs a title here). */}
+                {showRepository && <span className="data-pane-title">Reports & Exports</span>}
+                <div className="data-pane-header-actions" style={!showRepository ? { marginLeft: "auto" } : undefined}>
                   {showRepository && (
                     <button className="kpmg-btn ghost attr-btn-sm" onClick={() => setShowRepository(false)}>
                       Back to {phaseLabel.split(" ")[0]}
@@ -926,12 +941,22 @@ export default function Workspace() {
                 </div>
               </div>
               <div className="data-pane-scroll">
+                {!showRepository && (
+                  <StepHeader
+                    activeStep={activeStep}
+                    workflowProgress={workflowProgress}
+                    onStepChange={setActiveStep}
+                    isStreaming={isStreaming}
+                  />
+                )}
                 {activeStageEntry && (
                   <PhaseProgress
                     title={STAGE_TITLES[activeStageEntry[0]] ?? "Working"}
                     done={activeStageEntry[1].done}
                     total={activeStageEntry[1].total}
                     label={activeStageEntry[1].label}
+                    activity={activeStageEntry[1].activity}
+                    unit={STAGE_UNITS[activeStageEntry[0]] ?? "controls"}
                   />
                 )}
                 {showRepository ? (
@@ -999,14 +1024,11 @@ export default function Workspace() {
                   </>
                 ) : activeStep === 4 ? (
                   phase4Result ? (
-                    <>
-                      <PhaseActionsBar
-                        downloadLabel="Download gap assessment (Excel)"
-                        onDownload={handleReportDownload}
-                        busy={exportBusy}
-                      />
-                      <GapAssessmentPane result={phase4Result} />
-                    </>
+                    <GapAssessmentPane
+                      result={phase4Result}
+                      onDownload={handleReportDownload}
+                      downloadBusy={exportBusy}
+                    />
                   ) : (
                     <div style={{ padding: 20 }}>
                       <p style={{ color: "var(--muted)", marginTop: 0 }}>
