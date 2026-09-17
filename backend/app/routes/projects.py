@@ -50,11 +50,10 @@ def create_project(body: ProjectCreateRequest, auth: dict = Depends(require_auth
 _PROJECT_CHILD_TABLES = (
     "chat_messages",
     "artifacts",
-    "control_test_results",
-    "control_attributes",
     "phase_results",
+    "declared_evidence",
     "evidence_files",
-    "sop_uploads",
+    "adequacy_documents",
     "control_overlays",
     "controls",
     "rcm_uploads",

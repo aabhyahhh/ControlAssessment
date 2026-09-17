@@ -5,10 +5,6 @@ export function listArtifacts(projectId: string) {
   return apiFetch<Artifact[]>(`/projects/${projectId}/artifacts`);
 }
 
-export function exportAttributes(projectId: string) {
-  return apiFetch<Artifact>(`/projects/${projectId}/export-attributes`, { method: "POST" });
-}
-
 export function exportFinalReport(projectId: string) {
   return apiFetch<Artifact>(`/projects/${projectId}/export-final-report`, { method: "POST" });
 }
@@ -32,12 +28,6 @@ export function overrideRcm(projectId: string, file: File) {
   const formData = new FormData();
   formData.append("file", file);
   return apiFetch<OverrideResult>(`/projects/${projectId}/override-rcm`, { method: "POST", body: formData });
-}
-
-export function overrideAttributes(projectId: string, file: File) {
-  const formData = new FormData();
-  formData.append("file", file);
-  return apiFetch<OverrideResult>(`/projects/${projectId}/override-attributes`, { method: "POST", body: formData });
 }
 
 /**

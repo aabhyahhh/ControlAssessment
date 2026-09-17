@@ -14,18 +14,12 @@ from fastapi.responses import FileResponse
 from psycopg.rows import dict_row
 
 from app.database import get_conn
-from app.engines.attribute_quality_gate import check_schema_quality
 from app.engines.export_engine import (
-    build_attributes_workbook,
     build_final_report,
     build_phase_workbook,
     build_rcm_workbook,
 )
-from app.engines.override_engine import (
-    OVERRIDABLE_FIELDS,
-    parse_attribute_overrides,
-    parse_rcm_overrides,
-)
+from app.engines.override_engine import OVERRIDABLE_FIELDS, parse_rcm_overrides
 from app.engines.rcm_overlay import load_effective_controls
 from app.models.schemas import ArtifactResponse, OverrideResultResponse
 from app.security import require_auth
@@ -73,32 +67,10 @@ def list_artifacts(project_id: str, auth: dict = Depends(require_auth)):
     return [ArtifactResponse(**r) for r in rows]
 
 
-@router.post("/{project_id}/export-attributes", response_model=ArtifactResponse)
-def export_attributes(project_id: str, auth: dict = Depends(require_auth)):
-    _require_project(project_id, auth["user_id"])
-    with get_conn() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                "SELECT control_id, attributes FROM control_attributes WHERE project_id = %s ORDER BY control_id",
-                (project_id,),
-            )
-            schemas = cur.fetchall()
-        if not schemas:
-            raise HTTPException(status_code=400, detail="No attribute schemas to export — generate them first.")
-
-        path = build_attributes_workbook(
-            [{"control_id": s["control_id"], "attributes": s["attributes"] or []} for s in schemas],
-            artifacts_dir(project_id),
-        )
-        row = _record_artifact(conn, project_id, path, phase=4, artifact_type="attributes")
-    return ArtifactResponse(**row)
-
-
 @router.post("/{project_id}/export-final-report", response_model=ArtifactResponse)
 def export_final_report(project_id: str, auth: dict = Depends(require_auth)):
     """Universe-preserving: every control appears exactly once on the summary
-    sheet, with untested controls carrying an explicit reason rather than
-    being omitted."""
+    sheet. This is the gap-assessment deliverable covering all four steps."""
     project = _require_project(project_id, auth["user_id"])
     with get_conn() as conn:
         controls = load_effective_controls(conn, project_id)
@@ -107,21 +79,16 @@ def export_final_report(project_id: str, auth: dict = Depends(require_auth)):
 
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT phase, status, result FROM phase_results WHERE project_id = %s", (project_id,))
-            # Only completed phases contribute. A phase mid-re-run holds an
-            # empty result, and including it would silently blank that
-            # section of the report rather than marking it as not yet run.
+            # Only completed steps contribute. A step mid-re-run holds an empty
+            # result; including it would blank that section rather than mark it
+            # not yet run.
             phase_results = {
                 r["phase"]: r["result"]
                 for r in cur.fetchall()
                 if r["status"] == "done" and (r["result"] or {})
             }
-            cur.execute(
-                "SELECT control_id, attributes FROM control_attributes WHERE project_id = %s ORDER BY control_id",
-                (project_id,),
-            )
-            schemas = [{"control_id": r["control_id"], "attributes": r["attributes"] or []} for r in cur.fetchall()]
 
-        path = build_final_report(dict(project), controls, phase_results, schemas, artifacts_dir(project_id))
+        path = build_final_report(dict(project), controls, phase_results, artifacts_dir(project_id))
         row = _record_artifact(conn, project_id, path, phase=None, artifact_type="final_report")
     return ArtifactResponse(**row)
 
@@ -241,81 +208,6 @@ async def override_rcm(project_id: str, file: UploadFile, auth: dict = Depends(r
                 else ""
             )
             + " Re-run Phase 1 to rescore with these values."
-        ),
-    )
-
-
-@router.post("/{project_id}/override-attributes", response_model=OverrideResultResponse)
-async def override_attributes(project_id: str, file: UploadFile, auth: dict = Depends(require_auth)):
-    """Applies edits from a re-uploaded attribute workbook. Row order within
-    a control is authoritative for attribute order/IDs. Controls that have
-    already been tested are refused — their results are keyed to the frozen
-    attribute IDs."""
-    _require_project(project_id, auth["user_id"])
-    dest = _save_override_upload(project_id, file, await file.read())
-
-    with get_conn() as conn:
-        controls = load_effective_controls(conn, project_id)
-        known = {c["control_id"] for c in controls}
-        control_text = {
-            c["control_id"]: " ".join(str(c.get(f) or "") for f in ("control_description", "risk_description"))
-            for c in controls
-        }
-        try:
-            parsed = parse_attribute_overrides(dest, known)
-        except Exception as e:
-            raise HTTPException(status_code=422, detail=f"Could not read the override sheet: {e}")
-
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("SELECT control_id FROM control_test_results WHERE project_id = %s", (project_id,))
-            tested = {r["control_id"] for r in cur.fetchall()}
-
-        updated, refused = 0, []
-        with conn.cursor() as cur:
-            for control_id, attributes in parsed["attributes"].items():
-                if control_id in tested:
-                    refused.append(control_id)
-                    continue
-                schema = {"worksteps": [], "attributes": attributes, "sample_columns": []}
-                cur.execute(
-                    "SELECT worksteps, sample_columns FROM control_attributes "
-                    "WHERE project_id = %s AND control_id = %s",
-                    (project_id, control_id),
-                )
-                existing = cur.fetchone()
-                if existing:
-                    schema["worksteps"], schema["sample_columns"] = existing[0] or [], existing[1] or []
-
-                issues = check_schema_quality(schema, control_text.get(control_id, ""))
-                cur.execute(
-                    """
-                    INSERT INTO control_attributes
-                        (id, project_id, control_id, worksteps, attributes, sample_columns, quality_issues, status)
-                    VALUES (gen_random_uuid()::text, %s, %s, %s, %s, %s, %s, 'pending')
-                    ON CONFLICT (project_id, control_id) DO UPDATE
-                        SET attributes = EXCLUDED.attributes, quality_issues = EXCLUDED.quality_issues,
-                            status = 'pending', updated_at = NOW()
-                    """,
-                    (
-                        project_id, control_id, json.dumps(schema["worksteps"]), json.dumps(attributes),
-                        json.dumps(schema["sample_columns"]), json.dumps(issues),
-                    ),
-                )
-                updated += 1
-        conn.commit()
-
-    return OverrideResultResponse(
-        controls_updated=updated,
-        fields_updated=sum(len(a) for a in parsed["attributes"].values()),
-        unknown_control_ids=parsed["unknown_control_ids"],
-        message=(
-            f"Updated attributes for {updated} control(s); each was re-checked against the quality gate."
-            + (
-                f" Refused {len(refused)} already-tested control(s) ({', '.join(refused[:5])}) — their results are "
-                "keyed to the frozen attribute IDs."
-                if refused
-                else ""
-            )
         ),
     )
 

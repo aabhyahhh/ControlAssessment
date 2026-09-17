@@ -1,3 +1,20 @@
+-- ─────────────────────────────────────────────────────────────────────────
+--  Workflow redesign (Sept 2026) — schema for the 4-step flow:
+--    1. RCM Intake (Control ID is the only required column)
+--    2. Adequacy Assessment (SOPs + monthly workpapers, one folder per control)
+--    3. Evidence Requirements & Intake (declared list validated vs generated list)
+--    4. Gap Assessment (Excel: received vs expected, severity, no TOE workpaper)
+--
+--  This migration is applied on every startup. The DROP statements below
+--  retire tables and shapes from the previous (risk-inference + TOE) design.
+--  There is no production data to preserve; a fresh DB simply skips the DROPs.
+-- ─────────────────────────────────────────────────────────────────────────
+
+DROP TABLE IF EXISTS control_test_results;
+DROP TABLE IF EXISTS control_attributes;
+-- sop_uploads is replaced by adequacy_documents (many rows, per-control, workpapers).
+DROP TABLE IF EXISTS sop_uploads;
+
 CREATE TABLE IF NOT EXISTS users (
     id             TEXT PRIMARY KEY,
     email          TEXT UNIQUE NOT NULL,
@@ -32,7 +49,9 @@ CREATE TABLE IF NOT EXISTS rcm_uploads (
     uploaded_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- One row per control, normalized from the active rcm_upload.
+-- One row per control, normalized from the active rcm_upload. Only control_id
+-- is guaranteed non-null; every other field is optional and may be
+-- reconciled from the policy/SOP in step 2.
 CREATE TABLE IF NOT EXISTS controls (
     id                   TEXT PRIMARY KEY,
     project_id           TEXT NOT NULL REFERENCES projects(id),
@@ -79,15 +98,36 @@ CREATE TABLE IF NOT EXISTS evidence_files (
 );
 CREATE INDEX IF NOT EXISTS idx_evidence_files_control ON evidence_files (project_id, control_id);
 
--- SOP document(s) uploaded for Phase 3.
-CREATE TABLE IF NOT EXISTS sop_uploads (
+-- Step 2 — SOPs and monthly workpapers. One folder per Control ID; a file
+-- with control_id NULL is a project-wide SOP. doc_kind is 'sop' | 'workpaper'.
+-- period_month is the calendar month a workpaper covers (NULL for SOPs or
+-- when it could not be inferred). parsed_steps is only meaningful for SOPs.
+CREATE TABLE IF NOT EXISTS adequacy_documents (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
+    control_id      TEXT,
+    doc_kind        TEXT NOT NULL DEFAULT 'sop',
+    period_month    DATE,
     file_path       TEXT NOT NULL,
     original_name   TEXT,
+    file_type       TEXT,
+    file_size       BIGINT,
     extracted_text  TEXT,
     parsed_steps    JSONB DEFAULT '[]'::jsonb,
     uploaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_adequacy_documents_project ON adequacy_documents (project_id, control_id);
+
+-- Step 3 — the evidence the user declares they hold, per control, entered
+-- through a structured UI. Validated against the engine-generated
+-- required-documents list and against what was actually uploaded.
+CREATE TABLE IF NOT EXISTS declared_evidence (
+    id           TEXT PRIMARY KEY,
+    project_id   TEXT NOT NULL REFERENCES projects(id),
+    control_id   TEXT NOT NULL,
+    items        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (project_id, control_id)
 );
 
 -- One row per (project, phase) — flexible JSONB result blob + human-approval gate.
@@ -104,39 +144,6 @@ CREATE TABLE IF NOT EXISTS phase_results (
     UNIQUE (project_id, phase)
 );
 
--- Per-control testing attributes (Phase 4).
-CREATE TABLE IF NOT EXISTS control_attributes (
-    id              TEXT PRIMARY KEY,
-    project_id      TEXT NOT NULL REFERENCES projects(id),
-    control_id      TEXT NOT NULL,
-    worksteps       JSONB NOT NULL DEFAULT '[]'::jsonb,
-    attributes      JSONB NOT NULL DEFAULT '[]'::jsonb,
-    sample_columns  JSONB NOT NULL DEFAULT '[]'::jsonb,
-    quality_issues  JSONB DEFAULT '[]'::jsonb,
-    status          TEXT NOT NULL DEFAULT 'pending',
-    approved_at     TIMESTAMPTZ,
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (project_id, control_id)
-);
-
--- Per-control testing results (Phase 4).
-CREATE TABLE IF NOT EXISTS control_test_results (
-    id                    TEXT PRIMARY KEY,
-    project_id            TEXT NOT NULL REFERENCES projects(id),
-    control_id            TEXT NOT NULL,
-    test_mode             TEXT NOT NULL,
-    total_samples         INTEGER DEFAULT 0,
-    passed_samples        INTEGER DEFAULT 0,
-    failed_samples         INTEGER DEFAULT 0,
-    deviation_rate         NUMERIC(5,4) DEFAULT 0,
-    effectiveness_status   TEXT,
-    deficiency_type        TEXT,
-    overall_remarks         TEXT,
-    sample_results          JSONB DEFAULT '[]'::jsonb,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (project_id, control_id)
-);
-
 CREATE TABLE IF NOT EXISTS chat_messages (
     id              TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL REFERENCES projects(id),
@@ -149,6 +156,54 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_project ON chat_messages (project_id, created_at ASC);
+
+-- Step 2 — emails sent to a control owner asking them to justify a
+-- reconciliation mismatch (RCM vs SOP/workpaper contradiction). One row per
+-- SEND; a single send can cover several controls/fields at once (batch).
+CREATE TABLE IF NOT EXISTS justification_emails (
+    id               TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL REFERENCES projects(id),
+    recipient_email  TEXT NOT NULL,
+    subject          TEXT NOT NULL,
+    body             TEXT NOT NULL,
+    sent_by          TEXT NOT NULL REFERENCES users(id),
+    sent_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    send_status      TEXT NOT NULL DEFAULT 'sent',
+    error_message    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_justification_emails_project ON justification_emails (project_id);
+
+-- One row per (email, control, field) mismatch the email addressed. The
+-- owner's reply is captured here manually (no inbox integration) — text
+-- and/or an uploaded attachment — then analyzed by the LLM against the
+-- specific mismatch it responds to.
+CREATE TABLE IF NOT EXISTS justification_email_items (
+    id                         TEXT PRIMARY KEY,
+    justification_email_id    TEXT NOT NULL REFERENCES justification_emails(id),
+    project_id                 TEXT NOT NULL REFERENCES projects(id),
+    control_id                 TEXT NOT NULL,
+    field                      TEXT,
+    mismatch_description       TEXT NOT NULL,
+    -- Opaque random token embedded in the email's response links so the
+    -- control owner can submit directly from a public, unauthenticated page
+    -- (no login) without exposing any other project data. Not a JWT: no
+    -- expiry needed for v1, and a leaked link only ever grants write access
+    -- to this one mismatch's response fields, nothing else.
+    response_token             TEXT NOT NULL UNIQUE,
+    response_text              TEXT,
+    response_attachment_path   TEXT,
+    response_attachment_name   TEXT,
+    response_uploaded_at       TIMESTAMPTZ,
+    response_uploaded_by       TEXT REFERENCES users(id),
+    analysis_verdict           TEXT,
+    analysis_reasoning         TEXT,
+    analyzed_at                 TIMESTAMPTZ,
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_justification_items_project_control
+    ON justification_email_items (project_id, control_id);
+CREATE INDEX IF NOT EXISTS idx_justification_items_response_token
+    ON justification_email_items (response_token);
 
 CREATE TABLE IF NOT EXISTS artifacts (
     id             TEXT PRIMARY KEY,

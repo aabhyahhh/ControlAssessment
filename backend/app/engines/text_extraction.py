@@ -1,9 +1,11 @@
 """
-Lightweight text extraction for uploaded documents — docx/pdf/txt only, no
-OCR for v1. Shared by SOP ingestion (Phase 3) and, if needed later,
-evidence-date extraction (timeline sufficiency also reads evidence
-filenames/snippets, not full extraction, so this module is currently only
-used by sop_adequacy_engine.py).
+Lightweight text extraction for uploaded documents — docx/pdf/txt/xlsx only,
+no OCR for v1. Shared by step 2 (SOP + workpaper ingestion) and, if needed
+later, evidence-date extraction (timeline sufficiency also reads evidence
+filenames/snippets, not full extraction).
+
+xlsx support is here because monthly workpapers are commonly spreadsheets;
+the engine reconciles their text content against the RCM row.
 """
 
 from __future__ import annotations
@@ -22,7 +24,9 @@ def extract_text(file_path: Path) -> str:
         return _extract_pdf(file_path)
     if suffix == ".txt":
         return file_path.read_text(encoding="utf-8", errors="replace")
-    raise ValueError(f"Unsupported document type '{suffix}'. Use .docx, .pdf, or .txt.")
+    if suffix in (".xlsx", ".xlsm"):
+        return _extract_xlsx(file_path)
+    raise ValueError(f"Unsupported document type '{suffix}'. Use .docx, .pdf, .txt, or .xlsx.")
 
 
 def _extract_docx(file_path: Path) -> str:
@@ -47,4 +51,24 @@ def _extract_pdf(file_path: Path) -> str:
             text = page.extract_text()
             if text:
                 parts.append(text)
+    return "\n".join(parts)
+
+
+def _extract_xlsx(file_path: Path) -> str:
+    """Every non-empty cell across every sheet, row by row. Workpapers are
+    tabular, so a flat "Sheet | col | col" dump is enough for the reconciliation
+    prompt to see owners, dates, sign-offs and amounts."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(str(file_path), read_only=True, data_only=True)
+    parts: list[str] = []
+    try:
+        for ws in wb.worksheets:
+            parts.append(f"--- Sheet: {ws.title} ---")
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+    finally:
+        wb.close()
     return "\n".join(parts)

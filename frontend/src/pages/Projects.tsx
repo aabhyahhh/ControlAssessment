@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ApiError } from "../services/api";
 import * as projectService from "../services/projectService";
 import type { Framework, Project } from "../types";
+import { formatDateDMY } from "../utils/date";
 
 const FRAMEWORK_LABELS: Record<Framework, string> = {
   generic: "Generic",
@@ -56,7 +57,7 @@ function NewProjectModal({
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <h2>New Assessment Project</h2>
         <p className="modal-subtitle">
-          The audit period drives the timeline-sufficiency check in Phase 3 — set it accurately.
+          The audit period drives the monthly-workpaper coverage check in step 2 — set it accurately.
         </p>
         <form onSubmit={handleSubmit} className="modal-form">
           <label className="field-label">
@@ -153,9 +154,9 @@ function DeleteProjectModal({
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <h2>Delete this project?</h2>
         <p className="modal-subtitle">
-          <strong>{project.name}</strong> and everything in it — the RACM, uploaded evidence and SOP, all
-          phase results, testing attributes and generated reports — will be permanently deleted. This
-          cannot be undone.
+          <strong>{project.name}</strong> and everything in it — the RCM, uploaded SOPs, workpapers and
+          evidence, all step results and generated reports — will be permanently deleted. This cannot be
+          undone.
         </p>
         {error && <span className="field-error">{error}</span>}
         <div className="modal-actions">
@@ -245,9 +246,9 @@ const Projects = () => {
                 <h3>{project.name}</h3>
                 <div className="project-card-meta">
                   <span>
-                    Audit period: {project.audit_period_start} → {project.audit_period_end}
+                    Audit period: {formatDateDMY(project.audit_period_start)} → {formatDateDMY(project.audit_period_end)}
                   </span>
-                  <span>Phase {project.current_phase} of 4</span>
+                  <span>Step {project.current_phase} of 4</span>
                 </div>
               </div>
             ))}

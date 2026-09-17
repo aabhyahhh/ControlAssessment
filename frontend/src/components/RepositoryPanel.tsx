@@ -5,15 +5,17 @@ interface RepositoryPanelProps {
   artifacts: Artifact[];
   busy?: boolean;
   canExportFinalReport: boolean;
-  hasAttributes: boolean;
-  onExportAttributes: () => void;
   onExportFinalReport: () => void;
   onDownload: (artifact: Artifact) => void;
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  attributes: "Testing attributes",
-  final_report: "Final report",
+  final_report: "Gap assessment report",
+  rcm: "Working RCM",
+  phase1: "Step 1 — RCM intake",
+  phase2: "Step 2 — Adequacy",
+  phase3: "Step 3 — Evidence",
+  phase4: "Step 4 — Gap assessment",
 };
 
 function formatWhen(iso: string): string {
@@ -22,16 +24,15 @@ function formatWhen(iso: string): string {
 }
 
 export default function RepositoryPanel({
-  artifacts, busy, canExportFinalReport, hasAttributes,
-  onExportAttributes, onExportFinalReport, onDownload,
+  artifacts, busy, canExportFinalReport, onExportFinalReport, onDownload,
 }: RepositoryPanelProps) {
   return (
     <div className="pane-section">
       <div className="pane-section-header">
         <h3>Reports &amp; Exports</h3>
         <p>
-          Generate an Excel workpaper from this engagement. Every export is kept here, so earlier versions stay
-          downloadable.
+          Generate the gap-assessment Excel from this engagement. Every export is kept here, so earlier versions
+          stay downloadable.
         </p>
       </div>
 
@@ -41,20 +42,12 @@ export default function RepositoryPanel({
           disabled={busy || !canExportFinalReport}
           title={
             canExportFinalReport
-              ? "Multi-sheet workbook covering all four phases"
+              ? "Multi-sheet gap-assessment summary covering all four steps"
               : "Load an RCM first — the report is built from the control universe"
           }
           onClick={onExportFinalReport}
         >
-          {busy ? "Working…" : "Export Final Report"}
-        </button>
-        <button
-          className="kpmg-btn ghost"
-          disabled={busy || !hasAttributes}
-          title={hasAttributes ? "Editable attribute workbook" : "Generate testing attributes first"}
-          onClick={onExportAttributes}
-        >
-          Export Attributes
+          {busy ? "Working…" : "Export Gap Assessment"}
         </button>
       </div>
 

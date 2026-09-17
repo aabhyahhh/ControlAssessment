@@ -6,33 +6,33 @@ import { useAuth } from "../auth/AuthContext";
 const featureCards = [
   {
     icon: Layers,
-    title: "RACM Validation",
-    text: "Upload your risk & control matrix — the agent normalizes it, checks completeness, and prioritizes by risk.",
-  },
-  {
-    icon: FileSearch,
-    title: "Evidence Gap Detection",
-    text: "Required-documents checklists generated per control, validated against what you actually uploaded.",
+    title: "RCM Intake",
+    text: "Upload your risk & control matrix — only a Control ID column is required. The agent normalizes it and reports field completeness.",
   },
   {
     icon: ClipboardCheck,
-    title: "SOP-Based Adequacy",
-    text: "Compare control design against your SOP — catch misaligned frequencies, owners, and coverage gaps.",
+    title: "Adequacy Assessment",
+    text: "Reconcile each control against your SOPs and monthly workpapers — misaligned frequencies and owners, and any missing workpaper months, are flagged.",
+  },
+  {
+    icon: FileSearch,
+    title: "Evidence Requirements & Intake",
+    text: "Required-documents checklists generated per control, reconciled against the evidence you declare and the files you upload.",
   },
   {
     icon: ShieldCheck,
-    title: "Control Effectiveness",
-    text: "Generate testing attributes and run sample-based control testing, just like a real TOE engagement.",
+    title: "Gap Assessment",
+    text: "A per-control gap picture — received vs expected, where the gap lies, severity — delivered as an Excel summary.",
   },
   {
     icon: BarChart3,
     title: "Live Visual Workspace",
-    text: "Every phase's results — heatmaps, gauges, donuts, priority queues — update live as the agent works.",
+    text: "Every step's results — reconciliation grids, workpaper coverage, severity rollups — update live as the agent works.",
   },
   {
     icon: Brain,
-    title: "Human-in-the-Loop AI",
-    text: "Every inferred field and generated attribute is reviewable and editable before it's ever relied on.",
+    title: "Chat-Driven, Human-in-the-Loop",
+    text: "Say \"proceed\" to move to the next step, or review each step's output before you continue.",
   },
 ];
 
@@ -59,7 +59,7 @@ const Landing = () => {
         <section className="hero-section">
           <h1>AI-Driven Control Assessment, Start to Finish</h1>
           <p>
-            RACM validation, evidence review, SOP-based adequacy, and control effectiveness testing —
+            RCM intake, SOP &amp; workpaper adequacy, evidence requirements, and a gap assessment —
             <br />
             one guided workflow, one chat, live visualizations at every step.
           </p>

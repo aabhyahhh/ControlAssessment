@@ -13,8 +13,10 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/.env
 
-# Local storage (uploaded files, artifacts)
-storage/
+# Local storage (uploaded files, artifacts) — repo-root only; a leading
+# slash anchors this so it doesn't also match backend/app/storage/, which is
+# the real Python package that manages this directory, not runtime data.
+/storage/
 
 # Logs
 *.log

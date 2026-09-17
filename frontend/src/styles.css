@@ -634,6 +634,160 @@ button {
   font-weight: 500;
 }
 
+/* ---------- Public justification-response page ---------- */
+
+.respond-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px 20px;
+  background: linear-gradient(160deg, var(--bg) 0%, #e8edf8 100%);
+}
+
+.respond-card {
+  width: 100%;
+  max-width: 480px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  padding: 32px 32px 26px;
+  box-shadow: var(--shadow-hover, var(--shadow-soft));
+}
+
+.respond-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.respond-icon-badge {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: rgba(10, 36, 114, 0.08);
+  color: var(--blue);
+}
+
+.respond-loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px 0;
+}
+
+.respond-card h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+
+.respond-subtitle {
+  margin: 8px 0 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.respond-mismatch {
+  border: 1px solid var(--pane-line, var(--line));
+  border-left: 3px solid var(--pastel-red-ink);
+  border-radius: var(--radius-sm);
+  background: var(--pastel-red, #fde8e8);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.respond-mismatch-control {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.respond-mismatch-field {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pastel-red-ink);
+}
+
+.respond-mismatch-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.respond-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.respond-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.respond-form textarea,
+.respond-form input[type="file"] {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text);
+  resize: vertical;
+}
+
+.respond-form textarea:focus {
+  outline: 2px solid rgba(10, 36, 114, 0.32);
+  border-color: var(--blue);
+}
+
+.respond-success {
+  text-align: center;
+  padding: 12px 0 4px;
+  color: var(--pastel-green-ink);
+}
+
+.respond-success h2 {
+  font-size: 16px;
+  margin: 12px 0 4px;
+  color: var(--text);
+}
+
+.respond-success > p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.respond-success-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--pane-card, #f7f9fc);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
 /* ---------- Projects page ---------- */
 
 .projects-page {
@@ -826,6 +980,100 @@ button {
   gap: 14px;
 }
 
+.modal-card.wide {
+  max-width: 620px;
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.modal-field span {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.modal-field input,
+.modal-field textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  background: var(--pane-bg, transparent);
+  color: var(--text);
+  resize: vertical;
+}
+
+.justification-mismatch-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+
+.justification-email-card {
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.justification-email-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.justification-item-row {
+  border-top: 1px solid var(--pane-line);
+  padding-top: 8px;
+}
+
+.justification-item-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.justification-trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.justification-trail-step {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.justification-trail-step.done {
+  color: var(--pastel-green-ink);
+}
+
+.justification-trail-step.active {
+  color: var(--pastel-amber-ink);
+}
+
+.justification-trail-sep {
+  flex: 1;
+  height: 1px;
+  background: var(--pane-line);
+  min-width: 10px;
+}
+
 .modal-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -947,11 +1195,32 @@ button {
   box-shadow: inset 3px 0 0 #7ea1e5;
 }
 
-.workflow-pct {
+/* Word status, not a percentage — a bare "100%" here reads identically to
+   the real coverage/completeness percentages shown in the data pane, which
+   is exactly the confusion this must never create. Colours mirror the
+   workflow dot for the same status, so the two never disagree. */
+.workflow-step-status {
   margin-left: auto;
-  font-size: 11px;
-  color: #9eb2dd;
+  font-size: 10.5px;
+  font-weight: 600;
   white-space: nowrap;
+  color: #9eb2dd;
+}
+
+.workflow-step-status.status-running {
+  color: #93c5fd;
+}
+
+.workflow-step-status.status-awaiting_approval {
+  color: #fcd34d;
+}
+
+.workflow-step-status.status-done {
+  color: #86efac;
+}
+
+.workflow-step-status.status-error {
+  color: #fca5a5;
 }
 
 .workflow-dot {
@@ -1379,65 +1648,6 @@ button {
   color: var(--muted);
 }
 
-/* ---------- Step progress bar ---------- */
-
-.step-bar {
-  display: flex;
-  align-items: flex-start;
-}
-
-.step-bar-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.step-bar-node-wrap {
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.step-bar-node {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: 2px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.step-bar-pulse {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #fff;
-}
-
-.step-bar-line {
-  flex: 1;
-  height: 2px;
-}
-
-.step-bar-label {
-  margin-top: 6px;
-  font-size: 11.5px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.step-bar-label.done {
-  color: var(--green);
-}
-
-.step-bar-label.running {
-  color: var(--blue-2);
-  font-weight: 600;
-}
-
 /* ---------- Status badges ---------- */
 
 .status-badge {
@@ -1533,168 +1743,103 @@ button {
   margin-top: 2px;
 }
 
-/* ---------- Gauge ring ---------- */
+/* ---------- Field completeness matrix (Step 1) ---------- */
 
-.pane-gauge-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 22px;
-}
-
-.gauge-ring {
+.fc-matrix {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.fc-matrix-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 52px;
   align-items: center;
+  gap: 12px;
+  transition: opacity 160ms var(--ease-out-soft);
 }
 
-.gauge-ring-value {
-  font-size: 22px;
-  font-weight: 700;
-  fill: var(--text);
+.fc-matrix-row.dimmed {
+  opacity: 0.4;
 }
 
-.gauge-ring-caption {
-  text-align: center;
-  margin-top: 6px;
-}
-
-.gauge-ring-label {
-  font-size: 13px;
+.fc-matrix-row-label {
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text);
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.gauge-ring-sublabel {
-  font-size: 11.5px;
-  color: var(--muted);
-}
-
-/* ---------- Mini donut ---------- */
-
-.mini-donut {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.mini-donut-total {
-  font-size: 18px;
-  font-weight: 700;
-  fill: var(--text);
-}
-
-.mini-donut-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text);
-}
-
-.mini-donut-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mini-donut-swatch {
-  width: 11px;
-  height: 11px;
-  /* Round dots, matching the donut's own geometry — square chips read as a
-     table key rather than as part of the chart. */
-  border-radius: 999px;
-  border: 1.5px solid transparent;
-  flex-shrink: 0;
-}
-
-.mini-donut-legend-item {
-  padding: 3px 6px;
-  border-radius: 6px;
-  transition: background 150ms ease;
+.fc-matrix-row-label:disabled {
   cursor: default;
 }
 
-.mini-donut-legend-item.active {
-  background: #f2f6fc;
+.fc-matrix-row-label.active {
+  color: var(--pastel-blue-ink);
 }
 
-.mini-donut-caption {
-  font-size: 10px;
-  fill: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-/* ---------- Risk heatmap ---------- */
-
-.risk-heatmap {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.risk-heatmap-grid {
-  display: grid;
-  gap: 4px;
-  align-items: center;
-}
-
-.risk-heatmap-corner {
-  width: 70px;
-}
-
-.risk-heatmap-axis-label {
-  font-size: 11px;
-  color: var(--muted);
-  text-align: center;
-  font-weight: 600;
-}
-
-.risk-heatmap-axis-label-left {
-  text-align: right;
-  padding-right: 8px;
-}
-
-.risk-heatmap-cell {
-  width: 100%;
-  min-width: 52px;
-  height: 46px;
-  /* A defined edge, not a white gap. Against the tinted pane the old
-     near-white border made low-count pastel cells melt into the background;
-     currentColor ties each border to that cell's own risk tone. */
-  border: 1px solid currentColor;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 700;
+.fc-matrix-dots {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  transition: opacity 500ms var(--ease-out-soft);
+}
+
+.fc-matrix-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  flex: 0 0 auto;
+  transition: opacity 400ms var(--ease-out-soft), transform 400ms var(--ease-out-soft);
+  cursor: help;
+}
+
+.fc-matrix-dot.filled {
+  background: var(--pastel-blue-ink);
+}
+
+.fc-matrix-dot.blank {
+  background: transparent;
+  border: 1.5px dashed var(--pastel-amber-ink);
+}
+
+.fc-matrix-count {
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  animation: chart-pop 380ms var(--ease-out-soft) both;
-  transition:
-    transform 180ms var(--ease-out-soft),
-    box-shadow 180ms var(--ease-out-soft);
-}
-
-.risk-heatmap-cell.interactive {
-  cursor: pointer;
-}
-
-.risk-heatmap-cell.interactive:hover {
-  transform: translateY(-2px) scale(1.06);
-  box-shadow: var(--shadow-hover);
-}
-
-.risk-heatmap-cell:disabled {
-  opacity: 0.55;
-}
-
-.risk-heatmap-axes-caption {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
   color: var(--muted);
-  padding: 0 4px;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-matrix-dots {
+    transition: none;
+  }
+  .fc-matrix-dot {
+    transition: none;
+  }
+}
+
+.pane-filter-clear {
+  margin-left: 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--pastel-blue-ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pane-filter-clear:hover {
+  text-decoration: underline;
 }
 
 /* ---------- Data pane sections / tables ---------- */
@@ -1710,6 +1855,139 @@ button {
   width: 100%;
   max-width: var(--pane-measure, 860px);
   margin-inline: auto;
+}
+
+/* ---------- Step header (eyebrow + title + description + tabs) ---------- */
+
+.step-header {
+  width: 100%;
+  max-width: var(--pane-measure, 860px);
+  margin-inline: auto;
+  margin-bottom: 22px;
+}
+
+.step-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.step-header-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.step-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid var(--pane-line);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--pane-card);
+}
+
+.step-header-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--pastel-green-ink);
+}
+
+.step-header-status-dot.working {
+  background: var(--pastel-amber-ink);
+  animation: step-status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes step-status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.step-header-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.step-header-description {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  color: var(--muted);
+  max-width: 640px;
+  line-height: 1.5;
+}
+
+.step-header-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--pane-line);
+}
+
+.step-header-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 160ms var(--ease-out-soft), border-color 160ms var(--ease-out-soft);
+}
+
+.step-header-tab:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.step-header-tab:not(:disabled):hover {
+  color: var(--text);
+}
+
+.step-header-tab.active {
+  color: var(--pastel-blue-ink);
+  border-bottom-color: var(--pastel-blue-ink);
+}
+
+.step-header-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--pane-line);
+}
+
+.step-header-tab.active .step-header-tab-dot {
+  background: var(--pastel-blue-ink);
+}
+
+/* ---------- Step footer note ---------- */
+
+.step-footer-note {
+  width: 100%;
+  max-width: var(--pane-measure, 860px);
+  margin: 28px auto 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--pane-line);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-header-status-dot.working {
+    animation: none;
+  }
 }
 
 .pane-section-header h3 {
@@ -2610,6 +2888,15 @@ button {
   flex-shrink: 0;
 }
 
+.evidence-attach-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--pastel-green-ink);
+}
+
 /* ==========================================================================
    Timeline sufficiency chart
    ========================================================================== */
@@ -2773,8 +3060,6 @@ button {
    to centre itself with margin-inline while the gauge centred via its
    wrapper; two different mechanisms meant two slightly different axes. */
 .pane-center,
-.pane-gauge-row,
-.mini-donut,
 .chart-block {
   display: flex;
   flex-direction: column;
@@ -2782,17 +3067,24 @@ button {
   width: 100%;
 }
 
-/* Content-sized grids still need the auto margins for browsers that shrink
-   them inside the flex column, but the axis now matches the wrappers above. */
-.risk-heatmap {
-  margin-inline: auto;
-}
-
 .pane-subsection-note {
   color: var(--muted);
   font-size: 12.5px;
   margin: 0 0 10px;
   line-height: 1.5;
+}
+
+.pane-subsection-note-strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pane-subsection-callout {
+  background: var(--pastel-amber);
+  color: var(--pastel-amber-ink);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-weight: 500;
 }
 
 /* ==========================================================================
@@ -2946,6 +3238,15 @@ button {
 }
 
 .phase-progress-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-progress-activity {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3184,142 +3485,110 @@ button {
   color: var(--pastel-red-ink);
 }
 
-/* ---------- Phase 2: evidence dashboard ---------- */
+/* ---------- Readiness banner (Step 4) ---------- */
 
-.evidence-dashboard {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+.readiness-banner {
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-md);
+  background: var(--pane-card);
+  padding: 20px 22px;
 }
 
-/* Was `@media (max-width: 2100px)` — a guess at "the pane is ~48% of the
-   viewport" that stacked the dashboard on essentially every real screen.
-   Measuring the pane directly means two-up actually appears when the pane
-   is genuinely wide enough for it. */
-@container pane (max-width: 760px) {
-  .evidence-dashboard {
-    grid-template-columns: minmax(0, 1fr);
+.readiness-banner-eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.readiness-banner-fraction {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.readiness-banner-slash {
+  color: var(--muted);
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.readiness-banner-fraction-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.readiness-banner-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.readiness-banner-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--pastel-green-ink);
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.readiness-banner-copy {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.readiness-banner-download {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .readiness-banner-fill {
+    transition: none;
   }
 }
 
-.coverage-panel {
-  background: var(--pane-card);
-  border: 1px solid var(--pane-line);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-card);
-  min-width: 0;
+/* ---------- Disclosure (demoted secondary detail) ---------- */
+
+.pane-disclosure {
+  max-width: var(--pane-measure, 860px);
+  margin: 8px auto 0;
 }
 
-.coverage-panel h4 {
-  margin: 0 0 4px;
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-.coverage-grid-legend {
-  display: flex;
-  justify-content: flex-end;
-  gap: 14px;
-  margin-bottom: 10px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.coverage-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.coverage-swatch {
-  width: 13px;
-  height: 11px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.coverage-swatch.received {
-  background: var(--blue-3);
-}
-
-.coverage-swatch.missing {
-  border: 1px dashed var(--pastel-red-ink);
-  background: transparent;
-}
-
-.coverage-swatch.na {
-  background: var(--track);
-}
-
-.coverage-grid-table {
-  display: grid;
-  gap: 5px 6px;
-  align-items: center;
-  overflow-x: auto;
-}
-
-.coverage-col-head {
-  font-size: 9.5px;
+.pane-disclosure > summary {
+  cursor: pointer;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-  text-align: center;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--pastel-blue-ink);
+  padding: 8px 0;
+  list-style: none;
 }
 
-.coverage-row-id {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
+.pane-disclosure > summary::-webkit-details-marker {
+  display: none;
 }
 
-/* An escalated control is named in red so the row is findable without
-   reading across to the score. */
-.coverage-row-id.escalated {
-  color: var(--pastel-red-ink);
+.pane-disclosure > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 160ms var(--ease-out-soft);
 }
 
-.coverage-cell {
-  height: 22px;
-  border-radius: 6px;
-  cursor: default;
-  transition:
-    transform 140ms var(--ease-out-soft),
-    filter 140ms ease;
-}
-
-.coverage-cell:hover {
-  transform: scale(1.07);
-  filter: brightness(1.05);
-}
-
-/* KPMG blue for a received document, not the mockup's purple. */
-.coverage-cell.received {
-  background: var(--blue-3);
-}
-
-.coverage-cell.missing {
-  background: transparent;
-  border: 1.5px dashed var(--pastel-red-ink);
-}
-
-.coverage-cell.na {
-  background: var(--track);
-}
-
-.coverage-row-score {
-  font-size: 11.5px;
-  font-weight: 700;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  padding-left: 4px;
+.pane-disclosure[open] > summary::before {
+  transform: rotate(90deg);
 }
 
 /* ---------- Escalation funnel ---------- */
@@ -3378,17 +3647,201 @@ button {
 }
 
 .funnel-track {
+  position: relative;
   height: 9px;
   background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   overflow: hidden;
+  cursor: help;
 }
 
 .funnel-fill {
   height: 100%;
   border-radius: 999px;
+  /* One consistent fill for every stage: a population-narrowing funnel has
+     no per-stage severity of its own (that's a different concept from the
+     gap severity shown elsewhere) — every bar segment is the same "how much
+     of the population is still here" idea, so one colour keeps that honest. */
+  background: linear-gradient(90deg, var(--blue-2), var(--blue-3));
   animation: bar-grow 780ms var(--ease-out-soft) both;
   transform-origin: left center;
+}
+
+.funnel-fill-unassessed {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.funnel-stage-unassessed {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(234, 240, 255, 0.68);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .funnel-fill {
+    animation: none;
+  }
+}
+
+/* ---------- Attrition funnel (Step 3) ---------- */
+
+.attrition-funnel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 4px;
+}
+
+.attrition-stage-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.attrition-stage-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.attrition-stage-pct {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.attrition-track {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--track);
+}
+
+.attrition-track > .attrition-fill {
+  overflow: hidden;
+}
+
+.attrition-fill-count-outside {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.attrition-fill {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--pastel-blue-ink);
+  transition: width 800ms var(--ease-out-soft);
+  padding-left: 10px;
+}
+
+.attrition-fill-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.attrition-delta {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--pastel-amber-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attrition-fill {
+    transition: none;
+  }
+}
+
+/* ---------- Control coverage bars (Step 3) ---------- */
+
+.control-coverage-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-coverage-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 44px;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft);
+}
+
+.control-coverage-row:hover {
+  background: var(--pane-card);
+}
+
+.control-coverage-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.control-coverage-track {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.control-coverage-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.control-coverage-fill.matched {
+  background: var(--pastel-teal-ink);
+}
+
+.control-coverage-fill.declared {
+  background: var(--pastel-teal);
+}
+
+.control-coverage-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-coverage-detail {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--pane-line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-coverage-fill {
+    transition: none;
+  }
 }
 
 /* ---------- Escalated gap cards (mockup layout) ---------- */
@@ -3419,30 +3872,6 @@ button {
   border-radius: 999px;
   animation: bar-grow 700ms var(--ease-out-soft) both;
   transform-origin: left center;
-}
-
-/* Some expected documents of this kind arrived, some did not. Rendered as a
-   half-filled cell so it is distinguishable from both extremes at a glance. */
-.coverage-cell.partial {
-  background: linear-gradient(90deg, var(--blue-3) 50%, transparent 50%);
-  border: 1.5px dashed var(--pastel-amber-ink);
-}
-
-.coverage-swatch.partial {
-  background: linear-gradient(90deg, var(--blue-3) 50%, transparent 50%);
-  border: 1px dashed var(--pastel-amber-ink);
-}
-
-/* Names the finding outright next to the control ID, so a row of empty cells
-   cannot be misread as "nothing was required". */
-.coverage-row-flag {
-  display: block;
-  margin-top: 2px;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--pastel-red-ink);
 }
 
 /* ==========================================================================
@@ -3577,6 +4006,535 @@ button {
   border-radius: 999px;
   background: var(--pastel-amber);
   color: var(--pastel-amber-ink);
+}
+
+/* ==========================================================================
+   Reconciliation / workpaper exception summary strip (Step 2)
+   ========================================================================== */
+
+.recon-exception-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--pane-card);
+  border: 1px solid var(--pane-line);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.recon-exception-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.recon-exception-metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.recon-exception-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.recon-exception-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.recon-exception-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.recon-exception-detail-label {
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.recon-field-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pastel-red);
+  color: var(--pastel-red-ink);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.recon-field-chip.active {
+  border-color: var(--pastel-red-ink);
+}
+
+.recon-control-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--pastel-amber);
+  color: var(--pastel-amber-ink);
+}
+
+.recon-field-header.active {
+  background: var(--pastel-red);
+  color: var(--pastel-red-ink);
+}
+
+.recon-cell-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+/* ---------- Field support bars (Step 2 — "what the documents establish") ---------- */
+
+.field-support-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-support-row {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+}
+
+.field-support-row:not(:disabled):hover {
+  background: var(--pane-card);
+}
+
+.field-support-row.active {
+  background: var(--pastel-amber);
+}
+
+.field-support-row.dimmed {
+  opacity: 0.4;
+}
+
+.field-support-row:disabled {
+  cursor: default;
+}
+
+.field-support-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.field-support-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field-support-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field-support-track {
+  display: flex;
+  height: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--track);
+}
+
+.field-support-segment {
+  display: block;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.field-support-caption {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field-support-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--pane-line);
+}
+
+.field-support-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.field-support-legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-support-segment {
+    transition: none;
+  }
+}
+
+/* ---------- Workpaper calendar grid (Step 2) ---------- */
+
+.wp-calendar {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.wp-calendar-grid {
+  display: grid;
+  gap: 3px 4px;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 10px;
+}
+
+.wp-calendar-month-head {
+  font-size: 9.5px;
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  padding: 0 1px;
+}
+
+/* Once a period spans more than ~8 months, a horizontal "Mon YYYY" label no
+   longer fits any realistic column width — rotate it instead of letting it
+   wrap mid-word. Vertical text reads as one clean line regardless of column
+   width, the standard treatment for dense calendar/spreadsheet headers. */
+.wp-calendar-grid.rotated-heads {
+  align-items: end;
+}
+
+.wp-calendar-grid.rotated-heads .wp-calendar-month-head {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: left;
+  justify-self: center;
+  height: 58px;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  hyphens: none;
+  padding: 0;
+}
+
+.wp-calendar-row-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-calendar-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  transition: opacity 400ms var(--ease-out-soft), transform 400ms var(--ease-out-soft);
+  cursor: help;
+  justify-self: center;
+  max-width: 22px;
+}
+
+.wp-calendar-cell.present {
+  background: var(--pastel-green-ink);
+}
+
+.wp-calendar-cell.missing {
+  background: transparent;
+  border: 1.5px dashed var(--pastel-amber-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-calendar-cell {
+    transition: none;
+  }
+}
+
+/* ---------- Ranked exception list (Step 2) ---------- */
+
+.ranked-exceptions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ranked-exceptions-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft);
+}
+
+.ranked-exceptions-row:hover {
+  background: var(--pane-card);
+}
+
+.ranked-exceptions-id {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ranked-exceptions-track {
+  display: flex;
+  height: 8px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.ranked-exceptions-fill {
+  display: block;
+  height: 100%;
+  transition: width 700ms var(--ease-out-soft);
+}
+
+.ranked-exceptions-fill.contradicted {
+  background: var(--pastel-red-ink);
+}
+
+.ranked-exceptions-fill.undetermined {
+  background: var(--pastel-amber-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ranked-exceptions-fill {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Distribution bar (Step 4 severity distribution) — a stacked, clickable bar
+   in place of a pie/donut so proportions read accurately and each segment
+   can drive a filter directly.
+   ========================================================================== */
+
+.distribution-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.distribution-bar-track {
+  display: flex;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--track);
+}
+
+.distribution-bar-segment {
+  height: 100%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: width 700ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft);
+}
+
+.distribution-bar-segment.dimmed {
+  opacity: 0.35;
+}
+
+.distribution-bar-segment.active {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .distribution-bar-segment {
+    transition: opacity 160ms var(--ease-out-soft);
+  }
+}
+
+.distribution-bar-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.distribution-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 5px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.distribution-legend-item:hover,
+.distribution-legend-item.active {
+  background: var(--pane-card);
+}
+
+.distribution-legend-label {
+  flex: 0 0 auto;
+}
+
+.distribution-legend-label strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.distribution-legend-ids {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.distribution-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* ---------- Gap-area concentration (Step 4) ---------- */
+
+.gap-area-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gap-area-row {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--pane-line);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 160ms var(--ease-out-soft), opacity 160ms var(--ease-out-soft), border-color 160ms var(--ease-out-soft);
+}
+
+.gap-area-row:hover {
+  background: var(--pane-card);
+  border-color: var(--pastel-violet-ink);
+}
+
+.gap-area-row:focus-visible {
+  outline: 2px solid var(--pastel-violet-ink);
+  outline-offset: 1px;
+}
+
+.gap-area-row.active {
+  background: var(--pastel-amber);
+  border-color: var(--pastel-amber-ink);
+}
+
+.gap-area-row.dimmed {
+  opacity: 0.45;
+}
+
+.gap-area-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.gap-area-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gap-area-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.gap-area-chevron {
+  font-size: 11px;
+  color: var(--pastel-violet-ink);
+}
+
+.gap-area-track {
+  height: 8px;
+  border-radius: 5px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.gap-area-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--pastel-violet-ink);
+  transition: width 700ms var(--ease-out-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gap-area-fill {
+    transition: none;
+  }
+}
+
+.gap-area-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* ==========================================================================

@@ -14,7 +14,12 @@ import logging
 from typing import Any, Callable, Generator
 
 from app.agent.core.types import AgentContext
-from app.agent.prompts.system import _blocking_action_hint, build_system_prompt
+from app.agent.prompts.system import (
+    _blocking_action_hint,
+    _next_action_hint,
+    _runnable_next_step,
+    build_system_prompt,
+)
 from app.agent.tools.phase_tools import ALL_TOOLS, TOOLS_BY_NAME, execute_tool
 from app.engines.llm_utils import get_llm_client
 
@@ -30,36 +35,43 @@ def _get_llm_client():
 
 
 def _ensure_next_line(text: str, status: dict[str, Any]) -> str:
-    """Reconciles the reply's closing "**Next:**" line with live project state.
+    """Reconciles the reply's closing guidance with live project state, so the
+    user always knows what to do next.
 
-    The line is only appropriate when the workflow is genuinely blocked on the
-    user — a file to attach, or an approval that is theirs to give. So:
-
-      - blocked and the model wrote no line  -> append the deterministic one
-      - blocked and the model wrote its own  -> keep the model's wording
-      - not blocked                          -> strip any line the model added
-
-    That last case is the important one. The model tends to close every reply
-    with an instruction, which on a progress update means repeating a stale
-    demand ("attach your RCM") long after it was satisfied.
+      - blocked on the user (a file / the evidence list): a "**Next:**" line.
+        Keep the model's if it wrote one, else append the deterministic one.
+      - not blocked but a step is runnable: strip any stale "**Next:**" the
+        model added, then make sure the reply ends by naming that step and
+        inviting a go-ahead. Append a one-liner if the model didn't.
+      - nothing left to do: strip a stray "**Next:**" and leave it.
     """
     if not text:
         return text
 
     lines = text.splitlines()
-    has_line = any(line.strip().startswith("**Next:**") for line in lines)
+    has_next_line = any(line.strip().startswith("**Next:**") for line in lines)
     blocking = _blocking_action_hint(status)
 
-    if blocking and not has_line:
+    if blocking:
+        if has_next_line:
+            return text
         return f"{text}\n\n**Next:** {blocking}"
-    if blocking or not has_line:
-        return text
 
-    # Not blocked: drop the model's line and any blank lines it left behind.
-    kept = [line for line in lines if not line.strip().startswith("**Next:**")]
-    while kept and not kept[-1].strip():
-        kept.pop()
-    return "\n".join(kept)
+    # Not blocked — a "**Next:**" line here is wrong (it reads as a demand).
+    # Drop it and any trailing blank lines the model left behind.
+    if has_next_line:
+        kept = [line for line in lines if not line.strip().startswith("**Next:**")]
+        while kept and not kept[-1].strip():
+            kept.pop()
+        text = "\n".join(kept)
+
+    runnable = _runnable_next_step(status)
+    if runnable:
+        low = text.lower()
+        # Only append if the model didn't already point at the next move.
+        if "proceed" not in low and "next step" not in low and runnable["verb"] not in low:
+            text = f"{text}\n\n{runnable['sentence']}"
+    return text
 
 
 def run_agent_turn(
@@ -94,13 +106,29 @@ def run_agent_turn(
     final_text = ""
 
     for round_no in range(MAX_ROUNDS):
-        resp = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            max_completion_tokens=4000,
-        )
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                max_completion_tokens=4000,
+            )
+        except Exception:
+            logger.exception("agent LLM call failed for project %s", project_id)
+            # Don't leave the user with a bare "something went wrong" — still
+            # tell them what the next step is from the deterministic hint.
+            hint = _blocking_action_hint(status) or _next_action_hint(status)
+            fallback = (
+                "I hit a problem reaching the assessment model, so I can't run this turn. "
+                "You can still drive the workflow from the buttons on the right."
+            )
+            if hint:
+                fallback += f"\n\n**Next:** {hint}"
+            emit("token", {"text": fallback})
+            save_assistant(fallback)
+            yield
+            return
         choice = resp.choices[0]
         msg = choice.message
         tool_calls = msg.tool_calls or []

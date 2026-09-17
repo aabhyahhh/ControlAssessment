@@ -26,12 +26,14 @@ logger = logging.getLogger("engines.rcm_normalizer")
 #  Canonical schema (Layer A)
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Control ID is the ONLY required column in the redesigned flow. Every other
+# field is optional — step 2 reconciles what is missing against the SOP/policy.
 REQUIRED_FIELDS: dict[str, str] = {
     "control_id": "Control ID",
-    "control_description": "Control Description",
 }
 
 RECOMMENDED_FIELDS: dict[str, str] = {
+    "control_description": "Control Description",
     "risk_description": "Risk Description",
     "risk_level": "Risk Level",
     "control_type": "Control Type",

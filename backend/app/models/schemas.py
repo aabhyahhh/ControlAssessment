@@ -94,42 +94,82 @@ class EvidenceUploadResponse(BaseModel):
     unmatched_control_ids: list[str]
 
 
-class SopUploadResponse(BaseModel):
-    sop_upload_id: str
+class AdequacyDocSummary(BaseModel):
+    control_id: str | None = None
+    doc_kind: str
     filename: str
-    parsed_step_count: int
+    period_month: str | None = None
+    parsed_step_count: int = 0
 
 
-class AttributeItem(BaseModel):
-    id: str
-    name: str
-    description: str
+class AdequacyUploadResponse(BaseModel):
+    documents: list[AdequacyDocSummary]
+    total_files_saved: int
+    unmatched_control_ids: list[str] = Field(default_factory=list)
 
 
-class SampleColumnItem(BaseModel):
-    key: str
-    header: str
-
-
-class ControlAttributesResponse(BaseModel):
-    control_id: str
-    worksteps: list[str] = Field(default_factory=list)
-    attributes: list[AttributeItem] = Field(default_factory=list)
-    sample_columns: list[SampleColumnItem] = Field(default_factory=list)
-    quality_issues: list[str] = Field(default_factory=list)
-    status: str
-    updated_at: datetime
-
-
-class ModifyAttributeRequest(BaseModel):
-    name: str | None = None
-    description: str | None = None
-
-
-class AddAttributeRequest(BaseModel):
+class DeclaredEvidenceItem(BaseModel):
     name: str = Field(min_length=1)
-    description: str = Field(min_length=1)
-    position: int | None = None
+    note: str | None = None
+
+
+class DeclaredEvidenceRequest(BaseModel):
+    control_id: str = Field(min_length=1)
+    items: list[DeclaredEvidenceItem] = Field(default_factory=list)
+
+
+class DeclaredEvidenceResponse(BaseModel):
+    control_id: str
+    items: list[DeclaredEvidenceItem] = Field(default_factory=list)
+    updated_at: datetime | None = None
+
+
+class JustificationEmailItemRequest(BaseModel):
+    control_id: str = Field(min_length=1)
+    field: str | None = None
+    mismatch_description: str = Field(min_length=1)
+
+
+class SendJustificationEmailRequest(BaseModel):
+    recipient_email: EmailStr
+    subject: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    items: list[JustificationEmailItemRequest] = Field(min_length=1)
+
+
+class JustificationEmailItemResponse(BaseModel):
+    id: str
+    control_id: str
+    field: str | None = None
+    mismatch_description: str
+    response_text: str | None = None
+    response_attachment_name: str | None = None
+    response_uploaded_at: datetime | None = None
+    analysis_verdict: str | None = None
+    analysis_reasoning: str | None = None
+    analyzed_at: datetime | None = None
+    response_url: str | None = None
+
+
+class JustificationEmailResponse(BaseModel):
+    id: str
+    recipient_email: str
+    subject: str
+    sent_at: datetime
+    send_status: str
+    error_message: str | None = None
+    items: list[JustificationEmailItemResponse] = Field(default_factory=list)
+
+
+class JustificationResponseTokenInfo(BaseModel):
+    """What the public, unauthenticated response page is allowed to see —
+    only this one mismatch's own fields, nothing else about the project."""
+    control_id: str
+    field: str | None = None
+    mismatch_description: str
+    already_responded: bool
+    response_text: str | None = None
+    response_attachment_name: str | None = None
 
 
 class ArtifactResponse(BaseModel):
@@ -154,20 +194,6 @@ class OverrideResultResponse(BaseModel):
     fields_updated: int
     unknown_control_ids: list[str] = Field(default_factory=list)
     message: str
-
-
-class RiskBandInput(BaseModel):
-    threshold: int
-    label: str
-
-
-class RiskWeightingRequest(BaseModel):
-    """use_default=True applies the standard Low=1/Medium=3/High=6 model;
-    otherwise score_map and bands must both be supplied."""
-
-    use_default: bool = True
-    score_map: dict[str, int] | None = None
-    bands: list[RiskBandInput] | None = None
 
 
 class RunAllResponse(BaseModel):

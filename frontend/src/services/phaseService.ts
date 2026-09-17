@@ -1,33 +1,19 @@
 import { apiFetch } from "./api";
 import type { Phase1Result, Phase2Result, Phase3Result, Phase4Result, PhaseResult, RunAllResult } from "../types";
 
-export function runRiskPrioritization(projectId: string) {
+export function runRcmIntake(projectId: string) {
   return apiFetch<PhaseResult<Phase1Result>>(`/projects/${projectId}/phases/1/run`, { method: "POST" });
 }
 
-export function setRiskWeighting(
-  projectId: string,
-  body: { use_default: boolean; score_map?: Record<string, number>; bands?: { threshold: number; label: string }[] },
-) {
-  return apiFetch<PhaseResult<Phase1Result>>(`/projects/${projectId}/phases/1/weighting`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export function approveRiskInferences(projectId: string) {
-  return apiFetch<PhaseResult<Phase1Result>>(`/projects/${projectId}/phases/1/approve`, { method: "POST" });
-}
-
-export function runEvidenceGapAnalysis(projectId: string) {
+export function runAdequacyAssessment(projectId: string) {
   return apiFetch<PhaseResult<Phase2Result>>(`/projects/${projectId}/phases/2/run`, { method: "POST" });
 }
 
-export function runAdequacyAssessment(projectId: string) {
+export function runEvidenceAssessment(projectId: string) {
   return apiFetch<PhaseResult<Phase3Result>>(`/projects/${projectId}/phases/3/run`, { method: "POST" });
 }
 
-export function runControlTesting(projectId: string) {
+export function runGapAssessment(projectId: string) {
   return apiFetch<PhaseResult<Phase4Result>>(`/projects/${projectId}/phases/4/run`, { method: "POST" });
 }
 
@@ -37,4 +23,20 @@ export function runAllRemainingPhases(projectId: string) {
 
 export function getPhaseResult<T = Record<string, unknown>>(projectId: string, phase: number) {
   return apiFetch<PhaseResult<T>>(`/projects/${projectId}/phases/${phase}`);
+}
+
+export interface StageProgress {
+  done: number;
+  total: number;
+  label: string | null;
+  /** What's actually happening right now — "Extracting text", "Reconciling
+   *  against SOP", "Checklist generated" — so the bar reads as a real
+   *  account of backend work, not just a bare N-of-M count. */
+  activity: string | null;
+}
+
+/** Progress of any long-running step. A stage that is absent means "no
+ *  information available" — never "finished" (see engines/progress.py). */
+export function getPhaseProgress(projectId: string) {
+  return apiFetch<{ stages: Record<string, StageProgress> }>(`/projects/${projectId}/phase-progress`);
 }
