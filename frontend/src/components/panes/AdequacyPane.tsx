@@ -247,40 +247,6 @@ export default function AdequacyPane({
         </div>
       )}
 
-      {analytics?.reconciliation_summary && (
-        <div className="pane-subsection">
-          <h4>Reconciliation Summary</h4>
-          <p className="pane-subsection-note">
-            Portfolio-wide count of every RCM×document cell, across all controls and fields — the same four states
-            shown in the control × field matrix below.
-          </p>
-          <div className="metric-card-row">
-            <MetricCard
-              label="Supported"
-              value={analytics.reconciliation_summary.cell_counts.supported}
-              tone="green"
-            />
-            <MetricCard
-              label="Contradicted"
-              value={analytics.reconciliation_summary.cell_counts.contradicted}
-              tone="red"
-            />
-            <MetricCard
-              label="Undocumented"
-              value={analytics.reconciliation_summary.cell_counts.undocumented}
-              tone="amber"
-              sublabel="RCM/docs blank"
-            />
-            <MetricCard
-              label="Undetermined"
-              value={analytics.reconciliation_summary.cell_counts.undetermined}
-              tone="amber"
-              sublabel="Could not be assessed"
-            />
-          </div>
-        </div>
-      )}
-
       {analytics?.reconciliation_summary && analytics.reconciliation_summary.by_field.length > 0 && (
         <div className="pane-subsection">
           <h4>What The Documents Establish</h4>
@@ -331,7 +297,7 @@ export default function AdequacyPane({
               </p>
             );
           })()}
-          <WorkpaperCalendarGrid rows={workpaperCoverage} analytics={analytics.workpaper_coverage} />
+          <WorkpaperCalendarGrid rows={workpaperCoverage} />
         </div>
       )}
 
@@ -487,7 +453,7 @@ export default function AdequacyPane({
         </div>
       )}
 
-      {coverageGaps.length > 0 && (
+      {/* {coverageGaps.length > 0 && (
         <div className="pane-subsection">
           <h4>SOP Steps With No Matching Control</h4>
           <p className="pane-subsection-note">
@@ -513,7 +479,7 @@ export default function AdequacyPane({
             </table>
           </div>
         </div>
-      )}
+      )} */}
 
       <StepFooterNote text="Every figure derives from project state at render time — control count, period length and document counts drive the geometry. Nothing is fixed in the markup." />
     </div>

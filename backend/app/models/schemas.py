@@ -148,6 +148,7 @@ class JustificationEmailItemResponse(BaseModel):
     analysis_verdict: str | None = None
     analysis_reasoning: str | None = None
     analyzed_at: datetime | None = None
+    response_url: str | None = None
 
 
 class JustificationEmailResponse(BaseModel):
@@ -158,6 +159,17 @@ class JustificationEmailResponse(BaseModel):
     send_status: str
     error_message: str | None = None
     items: list[JustificationEmailItemResponse] = Field(default_factory=list)
+
+
+class JustificationResponseTokenInfo(BaseModel):
+    """What the public, unauthenticated response page is allowed to see —
+    only this one mismatch's own fields, nothing else about the project."""
+    control_id: str
+    field: str | None = None
+    mismatch_description: str
+    already_responded: bool
+    response_text: str | None = None
+    response_attachment_name: str | None = None
 
 
 class ArtifactResponse(BaseModel):

@@ -13,8 +13,6 @@ Inputs are the SOPs and monthly workpapers uploaded as one folder-per-control
   3. Checks monthly workpaper coverage against the audit period — one
      workpaper per calendar month is expected; missing months are flagged.
   4. Judges design alignment (SOP vs RCM) and classifies deficiencies.
-  5. Finds SOP steps with no matching control (whole-process coverage gaps).
-
 Every LLM call is per-control and parallelized with isolated failures.
 """
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Mail, Paperclip, Plus, Trash2 } from "lucide-react";
 import MetricCard from "../MetricCard";
 import StatusBadge from "../StatusBadge";
 import CollapsibleRow from "../CollapsibleRow";
@@ -23,6 +23,10 @@ interface EvidencePaneProps {
   declared: DeclaredEvidence[];
   busy?: boolean;
   onSaveList: (controlId: string, items: DeclaredEvidenceItem[]) => void;
+  /** Attach a file (any format — a document, an exported email, etc.)
+   *  directly to a control's evidence, outside the declared-list text
+   *  entries. */
+  onAttachFile: (controlId: string, file: File) => void | Promise<void>;
   onRun: () => void;
 }
 
@@ -33,23 +37,42 @@ const SEVERITY_TONE: Record<Severity, "red" | "amber" | "blue"> = {
   low: "blue",
 };
 
-/** Editable per-control declared-evidence list. */
+/** Editable per-control declared-evidence list, plus a shortcut to attach a
+ *  file (any format — a document, an exported email, etc.) directly to this
+ *  control's evidence without going through the full folder-upload flow. */
 function ListEditor({
   controlId,
   items,
   busy,
   onSave,
+  onAttachFile,
 }: {
   controlId: string;
   items: DeclaredEvidenceItem[];
   busy?: boolean;
   onSave: (items: DeclaredEvidenceItem[]) => void;
+  onAttachFile: (controlId: string, file: File) => void | Promise<void>;
 }) {
   const [draft, setDraft] = useState<DeclaredEvidenceItem[]>(items);
   const [newName, setNewName] = useState("");
+  const [attaching, setAttaching] = useState(false);
+  const [attachedName, setAttachedName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => setDraft(items), [items]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(items);
+
+  const handleFileChosen = async (file: File | undefined) => {
+    if (!file) return;
+    setAttaching(true);
+    try {
+      await onAttachFile(controlId, file);
+      setAttachedName(file.name);
+    } finally {
+      setAttaching(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="evidence-list-editor">
@@ -91,6 +114,7 @@ function ListEditor({
           type="button"
           className="kpmg-btn ghost attr-btn-sm"
           disabled={!newName.trim()}
+          title="Add as a text item"
           onClick={() => {
             setDraft((d) => [...d, { name: newName.trim() }]);
             setNewName("");
@@ -98,7 +122,27 @@ function ListEditor({
         >
           <Plus size={14} />
         </button>
+        <button
+          type="button"
+          className="kpmg-btn ghost attr-btn-sm"
+          disabled={attaching}
+          title="Attach a file or email export to this control's evidence"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {attaching ? "…" : <Paperclip size={14} />}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: "none" }}
+          onChange={(e) => void handleFileChosen(e.target.files?.[0])}
+        />
       </div>
+      {attachedName && (
+        <p className="evidence-attach-confirm">
+          <Mail size={12} /> Attached "{attachedName}" — re-run the evidence assessment to include it.
+        </p>
+      )}
       <button
         type="button"
         className="kpmg-btn primary attr-btn-sm"
@@ -223,6 +267,7 @@ export default function EvidencePane({
   declared,
   busy,
   onSaveList,
+  onAttachFile,
   onRun,
 }: EvidencePaneProps) {
   const declaredByControl = useMemo(
@@ -335,6 +380,7 @@ export default function EvidencePane({
                     items={items}
                     busy={busy}
                     onSave={(next) => onSaveList(cid, next)}
+                    onAttachFile={onAttachFile}
                   />
                   {row && (
                     <div style={{ marginTop: 14 }}>

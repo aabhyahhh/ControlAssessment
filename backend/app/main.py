@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     app.include_router(upload.router)
     app.include_router(evidence.router)
     app.include_router(justification.router)
+    app.include_router(justification.public_router)
     app.include_router(phases.router)
     app.include_router(export.router)
 

@@ -385,6 +385,19 @@ export interface JustificationEmailItem {
   analysis_verdict: "justified" | "partially_justified" | "not_justified" | null;
   analysis_reasoning: string | null;
   analyzed_at: string | null;
+  /** Public, unauthenticated link the control owner can respond from directly. */
+  response_url: string | null;
+}
+
+/** What the public /respond/:token page is allowed to see — only this one
+ *  mismatch's own fields, never other project/control data. */
+export interface JustificationResponseTokenInfo {
+  control_id: string;
+  field: string | null;
+  mismatch_description: string;
+  already_responded: boolean;
+  response_text: string | null;
+  response_attachment_name: string | null;
 }
 
 export interface JustificationEmail {

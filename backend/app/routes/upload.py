@@ -418,6 +418,61 @@ async def upload_evidence_folder(
     )
 
 
+@router.post("/{project_id}/controls/{control_id}/evidence-file", response_model=EvidenceFolderControlSummary)
+async def upload_control_evidence_file(
+    project_id: str,
+    control_id: str,
+    file: UploadFile,
+    auth: dict = Depends(require_auth),
+):
+    """Attach a single file (any format — a document, an exported email,
+    etc.) directly to one control's evidence, outside the full folder-upload
+    flow. Used by the Evidence pane's per-control '+' shortcut so an
+    auditor can add one missing/ad-hoc item without re-uploading everything."""
+    _require_project(project_id, auth["user_id"])
+    with get_conn() as conn:
+        controls = load_effective_controls(conn, project_id)
+    control_id_lookup = {_normalize_path_segment(c["control_id"]).lower(): c["control_id"] for c in controls}
+    matched_control_id = control_id_lookup.get(_normalize_path_segment(control_id).lower())
+    if matched_control_id is None:
+        raise HTTPException(status_code=422, detail=f"Control ID '{control_id}' is not in this project.")
+
+    original_name = file.filename or "attachment"
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds the 100MB upload limit.")
+
+    dest = save_evidence_file(project_id, matched_control_id, None, original_name, content)
+    classification = detect_control_test_mode(_control_evidence_root(project_id, matched_control_id))
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO evidence_files (id, project_id, control_id, sample_id, file_path, original_name, file_type, file_size, detected_mode)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    str(uuid.uuid4()), project_id, matched_control_id, None, str(dest),
+                    original_name, Path(original_name).suffix.lstrip("."), len(content),
+                    classification.detected_mode,
+                ),
+            )
+            cur.execute(
+                "UPDATE projects SET phase_status = jsonb_set(phase_status, '{3}', '\"pending\"'), updated_at = NOW() "
+                "WHERE id = %s AND phase_status->>'3' = 'done'",
+                (project_id,),
+            )
+        conn.commit()
+
+    return EvidenceFolderControlSummary(
+        control_id=matched_control_id,
+        detected_mode=classification.detected_mode,
+        sample_count=len(classification.sample_ids),
+        file_count=classification.file_count,
+    )
+
+
 def _normalize_path_segment(s: str) -> str:
     import unicodedata
 

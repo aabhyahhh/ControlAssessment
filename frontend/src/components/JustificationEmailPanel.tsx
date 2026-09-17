@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import StatusBadge from "./StatusBadge";
 import {
   analyzeJustificationItem,
@@ -100,13 +101,15 @@ function ComposeModal({
     }
   };
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card wide" onClick={(e) => e.stopPropagation()}>
         <h4 style={{ marginTop: 0 }}>Send Justification Email</h4>
         <p className="pane-subsection-note">
           Covers {items.length} mismatch{items.length === 1 ? "" : "es"} across{" "}
           {new Set(items.map((i) => i.control_id)).size} control{new Set(items.map((i) => i.control_id)).size === 1 ? "" : "s"}.
+          A secure response link is added automatically for each item below — the owner submits their
+          justification and/or evidence directly, no login required.
         </p>
         <label className="modal-field">
           <span>Control owner email</span>
@@ -141,7 +144,8 @@ function ComposeModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -223,22 +227,66 @@ function JustificationItemRow({
     }
   };
 
+  const trailStage = item.analysis_verdict
+    ? "analyzed"
+    : item.response_uploaded_at
+      ? "responded"
+      : "awaiting";
+
   return (
     <div className="justification-item-row">
       <div className="justification-item-head">
         <strong>{item.control_id}</strong>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>{item.mismatch_description}</span>
       </div>
+
+      <div className="justification-trail">
+        <span className={`justification-trail-step${trailStage !== "awaiting" ? " done" : " active"}`}>
+          1. Sent
+        </span>
+        <span className="justification-trail-sep" />
+        <span
+          className={`justification-trail-step${
+            trailStage === "responded" || trailStage === "analyzed" ? " done" : trailStage === "awaiting" ? " active" : ""
+          }`}
+        >
+          2. Owner responded
+        </span>
+        <span className="justification-trail-sep" />
+        <span className={`justification-trail-step${trailStage === "analyzed" ? " done" : trailStage === "responded" ? " active" : ""}`}>
+          3. Analyzed
+        </span>
+      </div>
+
+      {item.response_url && trailStage === "awaiting" && (
+        <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "6px 0 0", wordBreak: "break-all" }}>
+          Response link: <a href={item.response_url} target="_blank" rel="noreferrer">{item.response_url}</a>
+        </p>
+      )}
+
       {item.analysis_verdict && (
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 8 }}>
           <StatusBadge label={item.analysis_verdict.replace(/_/g, " ")} />
           {item.analysis_reasoning && (
             <p style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 0" }}>{item.analysis_reasoning}</p>
           )}
         </div>
       )}
+
+      {item.response_uploaded_at && (
+        <div style={{ marginTop: 8, fontSize: 12.5 }}>
+          {item.response_text && <p style={{ margin: "2px 0" }}>{item.response_text}</p>}
+          {item.response_attachment_name && (
+            <p style={{ margin: "2px 0", color: "var(--muted)" }}>Attachment: {item.response_attachment_name}</p>
+          )}
+        </div>
+      )}
+
       {!item.response_uploaded_at ? (
         <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+          <p className="pane-subsection-note" style={{ margin: 0 }}>
+            Waiting on the owner — or upload their reply on their behalf if it arrived by normal email:
+          </p>
           <textarea
             rows={2}
             placeholder="Paste the owner's reply here…"

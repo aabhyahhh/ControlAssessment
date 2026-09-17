@@ -13,7 +13,13 @@ import EvidencePane from "../components/panes/EvidencePane";
 import GapAssessmentPane from "../components/panes/GapAssessmentPane";
 import { getProject } from "../services/projectService";
 import { appendChatMessage, listChatMessages, sendChatMessage } from "../services/chatService";
-import { uploadAdequacyFile, uploadAdequacyFolder, uploadEvidenceFolder, uploadRcm } from "../services/uploadService";
+import {
+  uploadAdequacyFile,
+  uploadAdequacyFolder,
+  uploadControlEvidenceFile,
+  uploadEvidenceFolder,
+  uploadRcm,
+} from "../services/uploadService";
 import { listDeclaredEvidence, upsertDeclaredEvidence } from "../services/evidenceService";
 import { listJustificationEmails } from "../services/justificationService";
 import { listControls } from "../services/uploadService";
@@ -458,6 +464,21 @@ export default function Workspace() {
         });
       } catch (err) {
         pushAssistantMessage(`[error] ${err instanceof ApiError ? err.message : "Failed to save the evidence list."}`);
+      } finally {
+        setDeclaredBusy(false);
+      }
+    },
+    [projectId, pushAssistantMessage],
+  );
+
+  const handleAttachEvidenceFile = useCallback(
+    async (controlId: string, file: File) => {
+      if (!projectId) return;
+      setDeclaredBusy(true);
+      try {
+        await uploadControlEvidenceFile(projectId, controlId, file);
+      } catch (err) {
+        pushAssistantMessage(`[error] ${err instanceof ApiError ? err.message : "Failed to attach the file."}`);
       } finally {
         setDeclaredBusy(false);
       }
@@ -1018,6 +1039,7 @@ export default function Workspace() {
                       declared={declaredEvidence}
                       busy={phase3Busy || declaredBusy}
                       onSaveList={handleSaveDeclared}
+                      onAttachFile={handleAttachEvidenceFile}
                       onRun={() => projectId && runStep3(projectId)}
                     />
                   </>

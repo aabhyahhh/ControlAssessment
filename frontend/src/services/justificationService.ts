@@ -1,5 +1,10 @@
 import { apiFetch } from "./api";
-import type { JustificationEmail, JustificationEmailItem, SendJustificationEmailRequest } from "../types";
+import type {
+  JustificationEmail,
+  JustificationEmailItem,
+  JustificationResponseTokenInfo,
+  SendJustificationEmailRequest,
+} from "../types";
 
 export function listJustificationEmails(projectId: string) {
   return apiFetch<JustificationEmail[]>(`/projects/${projectId}/justification-emails`);
@@ -30,5 +35,21 @@ export function uploadJustificationResponse(
 export function analyzeJustificationItem(projectId: string, itemId: string) {
   return apiFetch<JustificationEmailItem>(`/projects/${projectId}/justification-emails/${itemId}/analyze`, {
     method: "POST",
+  });
+}
+
+// ── Public, unauthenticated — reached via the token link in the email ────
+
+export function getJustificationResponseByToken(token: string) {
+  return apiFetch<JustificationResponseTokenInfo>(`/justification-response/${token}`);
+}
+
+export function submitJustificationResponseByToken(token: string, responseText: string, file: File | null) {
+  const form = new FormData();
+  if (responseText) form.set("response_text", responseText);
+  if (file) form.set("file", file);
+  return apiFetch<JustificationResponseTokenInfo>(`/justification-response/${token}`, {
+    method: "POST",
+    body: form,
   });
 }

@@ -43,6 +43,11 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8090"
 
+    # Frontend origin used to build links embedded in outbound emails (e.g.
+    # the justification-response page) — distinct from cors_origins, which
+    # can list several. Defaults to the first CORS origin if unset.
+    app_base_url: str = ""
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
@@ -91,6 +96,13 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def frontend_base_url(self) -> str:
+        if self.app_base_url:
+            return self.app_base_url.rstrip("/")
+        origins = self.cors_origin_list
+        return origins[0].rstrip("/") if origins else ""
 
 
 @lru_cache

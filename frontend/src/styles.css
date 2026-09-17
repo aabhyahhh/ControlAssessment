@@ -634,6 +634,160 @@ button {
   font-weight: 500;
 }
 
+/* ---------- Public justification-response page ---------- */
+
+.respond-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px 20px;
+  background: linear-gradient(160deg, var(--bg) 0%, #e8edf8 100%);
+}
+
+.respond-card {
+  width: 100%;
+  max-width: 480px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #fff;
+  padding: 32px 32px 26px;
+  box-shadow: var(--shadow-hover, var(--shadow-soft));
+}
+
+.respond-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.respond-icon-badge {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  background: rgba(10, 36, 114, 0.08);
+  color: var(--blue);
+}
+
+.respond-loading {
+  text-align: center;
+  color: var(--muted);
+  padding: 20px 0;
+}
+
+.respond-card h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+
+.respond-subtitle {
+  margin: 8px 0 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.respond-mismatch {
+  border: 1px solid var(--pane-line, var(--line));
+  border-left: 3px solid var(--pastel-red-ink);
+  border-radius: var(--radius-sm);
+  background: var(--pastel-red, #fde8e8);
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.respond-mismatch-control {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.respond-mismatch-field {
+  margin-left: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pastel-red-ink);
+}
+
+.respond-mismatch-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.respond-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.respond-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.respond-form textarea,
+.respond-form input[type="file"] {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--text);
+  resize: vertical;
+}
+
+.respond-form textarea:focus {
+  outline: 2px solid rgba(10, 36, 114, 0.32);
+  border-color: var(--blue);
+}
+
+.respond-success {
+  text-align: center;
+  padding: 12px 0 4px;
+  color: var(--pastel-green-ink);
+}
+
+.respond-success h2 {
+  font-size: 16px;
+  margin: 12px 0 4px;
+  color: var(--text);
+}
+
+.respond-success > p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.respond-success-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--pane-card, #f7f9fc);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
 /* ---------- Projects page ---------- */
 
 .projects-page {
@@ -889,6 +1043,35 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.justification-trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.justification-trail-step {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.justification-trail-step.done {
+  color: var(--pastel-green-ink);
+}
+
+.justification-trail-step.active {
+  color: var(--pastel-amber-ink);
+}
+
+.justification-trail-sep {
+  flex: 1;
+  height: 1px;
+  background: var(--pane-line);
+  min-width: 10px;
 }
 
 .modal-form-row {
@@ -2705,6 +2888,15 @@ button {
   flex-shrink: 0;
 }
 
+.evidence-attach-confirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--pastel-green-ink);
+}
+
 /* ==========================================================================
    Timeline sufficiency chart
    ========================================================================== */
@@ -4013,30 +4205,58 @@ button {
 
 /* ---------- Workpaper calendar grid (Step 2) ---------- */
 
-.wp-calendar-scroll {
-  overflow-x: auto;
+.wp-calendar {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .wp-calendar-grid {
   display: grid;
-  gap: 4px;
+  gap: 3px 4px;
   align-items: center;
-  min-width: 600px;
+  width: 100%;
+  max-width: 100%;
   margin-top: 10px;
 }
 
 .wp-calendar-month-head {
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--muted);
   text-align: center;
   font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  padding: 0 1px;
+}
+
+/* Once a period spans more than ~8 months, a horizontal "Mon YYYY" label no
+   longer fits any realistic column width — rotate it instead of letting it
+   wrap mid-word. Vertical text reads as one clean line regardless of column
+   width, the standard treatment for dense calendar/spreadsheet headers. */
+.wp-calendar-grid.rotated-heads {
+  align-items: end;
+}
+
+.wp-calendar-grid.rotated-heads .wp-calendar-month-head {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: left;
+  justify-self: center;
+  height: 58px;
   white-space: nowrap;
+  overflow-wrap: normal;
+  hyphens: none;
+  padding: 0;
 }
 
 .wp-calendar-row-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4047,7 +4267,7 @@ button {
   transition: opacity 400ms var(--ease-out-soft), transform 400ms var(--ease-out-soft);
   cursor: help;
   justify-self: center;
-  max-width: 20px;
+  max-width: 22px;
 }
 
 .wp-calendar-cell.present {
@@ -4059,42 +4279,8 @@ button {
   border: 1.5px dashed var(--pastel-amber-ink);
 }
 
-.wp-calendar-missing-row {
-  display: grid;
-  gap: 4px;
-  align-items: end;
-  height: 34px;
-  min-width: 600px;
-}
-
-.wp-calendar-missing-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  align-self: center;
-}
-
-.wp-calendar-missing-cell-wrap {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  height: 100%;
-}
-
-.wp-calendar-missing-bar {
-  width: 100%;
-  max-width: 20px;
-  min-height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: var(--pastel-amber-ink);
-  transition: height 700ms var(--ease-out-soft);
-  cursor: help;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .wp-calendar-cell,
-  .wp-calendar-missing-bar {
+  .wp-calendar-cell {
     transition: none;
   }
 }

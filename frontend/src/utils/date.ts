@@ -22,3 +22,15 @@ export function formatMonthYear(yearMonth: string): string {
   const idx = Number(month) - 1;
   return idx >= 0 && idx < 12 ? `${MONTH_ABBR[idx]} ${year}` : yearMonth;
 }
+
+/** Compact 'Mon 'YY' form (e.g. "Dec '24") for dense column headers — a
+ *  full "Mon YYYY" label doesn't fit a narrow grid column at any font size
+ *  once a period spans a dozen-plus months, so this trades a couple of
+ *  digits of precision for actually fitting on one line. */
+export function formatMonthYearShort(yearMonth: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(yearMonth);
+  if (!match) return yearMonth;
+  const [, year, month] = match;
+  const idx = Number(month) - 1;
+  return idx >= 0 && idx < 12 ? `${MONTH_ABBR[idx]} '${year.slice(2)}` : yearMonth;
+}

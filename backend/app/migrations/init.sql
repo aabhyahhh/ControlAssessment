@@ -184,6 +184,12 @@ CREATE TABLE IF NOT EXISTS justification_email_items (
     control_id                 TEXT NOT NULL,
     field                      TEXT,
     mismatch_description       TEXT NOT NULL,
+    -- Opaque random token embedded in the email's response links so the
+    -- control owner can submit directly from a public, unauthenticated page
+    -- (no login) without exposing any other project data. Not a JWT: no
+    -- expiry needed for v1, and a leaked link only ever grants write access
+    -- to this one mismatch's response fields, nothing else.
+    response_token             TEXT NOT NULL UNIQUE,
     response_text              TEXT,
     response_attachment_path   TEXT,
     response_attachment_name   TEXT,
@@ -196,6 +202,8 @@ CREATE TABLE IF NOT EXISTS justification_email_items (
 );
 CREATE INDEX IF NOT EXISTS idx_justification_items_project_control
     ON justification_email_items (project_id, control_id);
+CREATE INDEX IF NOT EXISTS idx_justification_items_response_token
+    ON justification_email_items (response_token);
 
 CREATE TABLE IF NOT EXISTS artifacts (
     id             TEXT PRIMARY KEY,

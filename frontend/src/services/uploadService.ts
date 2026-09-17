@@ -1,5 +1,11 @@
 import { apiFetch } from "./api";
-import type { AdequacyUploadResult, Control, EvidenceUploadResult, RcmUploadResult } from "../types";
+import type {
+  AdequacyUploadResult,
+  Control,
+  EvidenceFolderControlSummary,
+  EvidenceUploadResult,
+  RcmUploadResult,
+} from "../types";
 
 export function uploadRcm(projectId: string, file: File) {
   const formData = new FormData();
@@ -47,6 +53,18 @@ export function uploadAdequacyFolder(projectId: string, fileList: FileList | Fil
     method: "POST",
     body: formData,
   });
+}
+
+/** Attach one file (any format) directly to a control's evidence — the
+ *  Evidence pane's per-control '+' shortcut, outside the full folder-upload
+ *  flow. */
+export function uploadControlEvidenceFile(projectId: string, controlId: string, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFetch<EvidenceFolderControlSummary>(
+    `/projects/${projectId}/controls/${encodeURIComponent(controlId)}/evidence-file`,
+    { method: "POST", body: formData },
+  );
 }
 
 /** A single SOP or workpaper. Omit controlId for a whole-process SOP. */
